@@ -18,9 +18,20 @@ import adminRouter from "./routes/admin.js";
 
 const app = express();
 
+const allowedOrigins = env.CORS_ORIGIN.split(",").map((o) => o.trim());
+console.log("[cors] allowed origins:", allowedOrigins);
+
 app.use(
   cors({
-    origin: env.CORS_ORIGIN.split(",").map((o) => o.trim()),
+    origin(requestOrigin, callback) {
+      // Allow requests with no origin (health checks, server-to-server, etc.)
+      if (!requestOrigin) return callback(null, true);
+      if (allowedOrigins.includes(requestOrigin)) {
+        return callback(null, true);
+      }
+      console.warn(`[cors] BLOCKED origin: "${requestOrigin}"`);
+      return callback(new Error(`Origin ${requestOrigin} not allowed by CORS`));
+    },
     credentials: true,
   }),
 );
@@ -45,5 +56,5 @@ app.use("/", catalogRouter);
 app.use(errorHandler);
 
 app.listen(env.PORT, () => {
-  console.log(`[derma-os/api] listening on http://127.0.0.1:${env.PORT}`);
+  console.log(`[derma-os/api] listening on port ${env.PORT}`);
 });
