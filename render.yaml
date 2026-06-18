@@ -19,8 +19,8 @@ services:
     rootDir: apps/api
     buildCommand: |
       pnpm install &&
-      pnpm build &&
       npx prisma generate &&
+      pnpm build &&
       npx prisma migrate deploy
     startCommand: node dist/server.js
     envVars:
