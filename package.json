@@ -1,0 +1,31 @@
+{
+  "name": "derma-os",
+  "version": "0.3.0",
+  "description": "DERMA-OS — Sistema operativo del centro dermatológico Derma Piel y Pelo",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k -n api,dash -c blue,magenta \"pnpm --filter @derma-os/api dev\" \"pnpm --filter @derma-os/dashboard dev\"",
+    "dev:api": "pnpm --filter @derma-os/api dev",
+    "dev:dashboard": "pnpm --filter @derma-os/dashboard dev",
+    "build": "pnpm --filter @derma-os/api build && pnpm --filter @derma-os/dashboard build",
+    "preview": "pnpm --filter @derma-os/dashboard preview",
+    "lint": "pnpm --filter @derma-os/dashboard lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @derma-os/api db:generate",
+    "db:migrate": "pnpm --filter @derma-os/api db:migrate",
+    "db:reset": "pnpm --filter @derma-os/api db:reset",
+    "db:seed": "pnpm --filter @derma-os/api db:seed",
+    "db:clean": "pnpm --filter @derma-os/api db:clean",
+    "db:studio": "pnpm --filter @derma-os/api db:studio",
+    "legacy:open": "echo \"Abrir DERMA-OS Demo.html directamente en el browser (prototipo congelado)\""
+  },
+  "engines": {
+    "node": ">=18.18",
+    "pnpm": ">=8"
+  },
+  "packageManager": "pnpm@11.5.2",
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.6.3"
+  }
+}

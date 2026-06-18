@@ -1,0 +1,43 @@
+# ─────────────────────────────────────────────
+# DERMA-OS · Render Blueprint — API + PostgreSQL
+# ─────────────────────────────────────────────
+# Render lee este archivo para configurar los servicios automáticamente.
+# Docs: https://docs.render.com/blueprint-spec
+
+databases:
+  - name: derma-os-db
+    plan: free            # Plan gratuito (256 MB, expira en 90 días)
+    databaseName: derma_os
+    user: derma_admin
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: derma-os-api
+    runtime: node
+    plan: free            # Plan gratuito (se suspende tras 15 min de inactividad)
+    rootDir: apps/api
+    buildCommand: |
+      pnpm install &&
+      pnpm build &&
+      npx prisma generate &&
+      npx prisma migrate deploy
+    startCommand: node dist/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: derma-os-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true   # Render genera un secreto aleatorio automáticamente
+      - key: JWT_EXPIRES_IN
+        value: "12h"
+      - key: UPLOAD_DIR
+        value: uploads
+      - key: CORS_ORIGIN
+        sync: false           # Lo configuras manualmente con la URL de Netlify
+      - key: PORT
+        value: "4000"
+    healthCheckPath: /health

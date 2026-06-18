@@ -1,0 +1,30 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Build / cache
+.vite/
+.turbo/
+*.tsbuildinfo
+
+# Storage local (fotos clínicas, NO commitear)
+apps/api/uploads/
+
+# Prisma
+apps/api/prisma/migrations/dev.db*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# OS
+Thumbs.db
+.thumbnail

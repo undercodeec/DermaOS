@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(pnpm *)",
+      "PowerShell(npm *)",
+      "Bash(pnpm *)",
+      "Bash(npm *)"
+    ]
+  }
+}

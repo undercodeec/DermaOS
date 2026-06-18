@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Montserrat:wght@200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:#0E1012;-webkit-font-smoothing:antialiased;}
+  ::selection{background:#00A6E2;color:#fff;}
+  image-slot{display:block;}
+  @keyframes scrollPulse{0%,100%{transform:translateY(0);opacity:.4}50%{transform:translateY(9px);opacity:1}}
+  @keyframes glowDrift{0%,100%{opacity:.45;transform:scale(1)}50%{opacity:.7;transform:scale(1.08)}}
+  @media(max-width:768px){
+    [data-row]{flex-direction:column !important;gap:48px !important;text-align:center !important;}
+    [data-side]{flex:0 0 auto !important;width:100% !important;align-items:center !important;}
+    [data-side]>*{text-align:center !important;}
+    [data-hero]{padding:0 24px !important;align-items:center !important;text-align:center !important;}
+    [data-hero] *{text-align:center !important;}
+    [data-h1]{font-size:18vw !important;}
+    [data-h2]{font-size:13vw !important;}
+    [data-statgrid]{grid-template-columns:1fr 1fr !important;}
+    [data-techgrid]{grid-template-columns:1fr !important;}
+    [data-vis]{width:78vw !important;height:96vw !important;}
+    [data-topbar]{padding:18px 24px !important;}
+  }
+</style>
+<script src="./image-slot.js"></script>
+<script src="https://unpkg.com/lenis@1.1.20/dist/lenis.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+</helmet>
+
+<canvas id="bgfx" style="position:fixed;inset:0;width:100vw;height:100vh;z-index:0;display:block;"></canvas>
+
+<div data-topbar style="position:fixed;top:0;left:0;right:0;z-index:60;display:flex;justify-content:space-between;align-items:center;padding:26px 7vw;mix-blend-mode:difference;pointer-events:none;">
+  <div style="font-family:'Montserrat',sans-serif;font-weight:700;letter-spacing:0.42em;font-size:15px;color:#fff;">LUMINA</div>
+  <div style="font-family:'Montserrat',sans-serif;font-weight:400;letter-spacing:0.28em;font-size:11px;color:#fff;text-transform:uppercase;">Dermatología de precisión</div>
+</div>
+
+<main style="position:relative;z-index:1;">
+
+  <!-- ============ HERO ============ -->
+  <section data-screen-label="Hero" style="position:relative;height:175vh;">
+    <div id="hero-overlay" data-hero style="position:sticky;top:0;height:100vh;display:flex;flex-direction:column;justify-content:center;padding:0 7vw;">
+      <span data-hl style="display:block;font-family:'Montserrat',sans-serif;font-weight:500;font-size:13px;letter-spacing:0.5em;text-transform:uppercase;color:#00A6E2;margin-bottom:30px;">Ciencia de la piel</span>
+      <h1 data-h1 data-hl style="margin:0;font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(56px,10.5vw,184px);line-height:0.92;letter-spacing:-0.01em;color:#F3F3F3;max-width:13ch;">Ciencia y cuidado para tu piel</h1>
+      <p data-hl style="margin:34px 0 0;font-family:'Montserrat',sans-serif;font-weight:300;font-size:clamp(16px,1.35vw,21px);line-height:1.6;color:#D9D9DC;max-width:42ch;">Dermatología avanzada, guiada por evidencia y diseñada alrededor de tu piel. Resultados visibles, medibles y duraderos.</p>
+      <div style="position:absolute;left:7vw;bottom:7vh;display:flex;align-items:center;gap:14px;">
+        <span style="width:1px;height:46px;background:linear-gradient(#00A6E2,transparent);display:block;animation:scrollPulse 2s ease-in-out infinite;"></span>
+        <span style="font-family:'Montserrat',sans-serif;font-weight:500;font-size:11px;letter-spacing:0.34em;color:#9C9C9C;text-transform:uppercase;">Desliza</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FILOSOFÍA ============ -->
+  <section data-screen-label="Filosofía" style="position:relative;background:#F3F3F3;padding:18vh 7vw;min-height:96vh;display:flex;align-items:center;">
+    <div data-row style="display:flex;gap:6vw;align-items:center;width:100%;max-width:1280px;margin:0 auto;">
+      <div data-side data-seq style="flex:0 0 42%;display:flex;flex-direction:column;align-items:flex-start;">
+        <span style="font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.42em;text-transform:uppercase;color:#108474;margin-bottom:26px;">Nuestro enfoque</span>
+        <h2 data-h2 style="margin:0;font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(40px,4.6vw,82px);line-height:1.0;letter-spacing:-0.01em;color:#293223;">La piel, entendida en profundidad</h2>
+        <p style="margin:30px 0 0;font-family:'Montserrat',sans-serif;font-weight:300;font-size:clamp(15px,1.2vw,19px);line-height:1.75;color:#666;max-width:46ch;">Combinamos diagnóstico clínico riguroso con un cuidado sereno y personalizado. Cada tratamiento parte de la salud de tu piel —no de una tendencia— para devolverle equilibrio, luz y firmeza.</p>
+        <div style="display:flex;gap:40px;margin-top:46px;">
+          <div><div style="font-family:'Cormorant Garamond',serif;font-size:46px;color:#62685E;line-height:1;">01</div><div style="font-family:'Montserrat',sans-serif;font-weight:400;font-size:13px;color:#9C9C9C;margin-top:10px;letter-spacing:0.04em;">Diagnóstico<br>médico</div></div>
+          <div><div style="font-family:'Cormorant Garamond',serif;font-size:46px;color:#62685E;line-height:1;">02</div><div style="font-family:'Montserrat',sans-serif;font-weight:400;font-size:13px;color:#9C9C9C;margin-top:10px;letter-spacing:0.04em;">Plan<br>personalizado</div></div>
+          <div><div style="font-family:'Cormorant Garamond',serif;font-size:46px;color:#62685E;line-height:1;">03</div><div style="font-family:'Montserrat',sans-serif;font-weight:400;font-size:13px;color:#9C9C9C;margin-top:10px;letter-spacing:0.04em;">Resultado<br>medible</div></div>
+        </div>
+      </div>
+      <div style="flex:1;display:flex;justify-content:center;">
+        <div data-anim="clip-reveal" data-vis style="position:relative;width:30vw;height:40vw;max-width:480px;max-height:640px;">
+          <div style="position:absolute;inset:-12% -8%;background:radial-gradient(circle at 50% 60%,rgba(0,166,226,0.28),transparent 68%);filter:blur(36px);animation:glowDrift 7s ease-in-out infinite;"></div>
+          <image-slot id="ph-philosophy" shape="rounded" radius="4" placeholder="Retrato de piel / textura cálida" style="position:relative;width:100%;height:100%;"></image-slot>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TRATAMIENTOS INTRO ============ -->
+  <section data-screen-label="Tratamientos" style="position:relative;background:#FFFFFF;padding:16vh 7vw 8vh;display:flex;align-items:center;justify-content:center;">
+    <div data-anim="fade-up" style="text-align:center;max-width:900px;">
+      <span style="font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.42em;text-transform:uppercase;color:#108474;">Tratamientos</span>
+      <h2 data-h2 style="margin:24px 0 0;font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(40px,5vw,92px);line-height:1.0;color:#293223;letter-spacing:-0.01em;">Cuidado clínico, a la medida de tu piel</h2>
+    </div>
+  </section>
+
+  <!-- T1 LÁSER -->
+  <section data-screen-label="Tratamiento · Láser" style="position:relative;background:#FFFFFF;padding:10vh 7vw;min-height:90vh;display:flex;align-items:center;">
+    <div data-row style="display:flex;gap:6vw;align-items:center;width:100%;max-width:1280px;margin:0 auto;">
+      <div data-side data-seq style="flex:0 0 40%;display:flex;flex-direction:column;align-items:flex-start;">
+        <span style="font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.3em;color:#9C9C9C;">01 / 05</span>
+        <h3 data-h2 style="margin:18px 0 0;font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(36px,4vw,74px);line-height:1.0;color:#293223;">Láser</h3>
+        <p style="margin:26px 0 0;font-family:'Montserrat',sans-serif;font-weight:300;font-size:clamp(15px,1.15vw,18px);line-height:1.75;color:#666;max-width:42ch;">Tecnología láser de última generación para depilación, lesiones vasculares y rejuvenecimiento, con la máxima seguridad para cada fototipo de piel.</p>
+        <a href="#cta" style="margin-top:34px;font-family:'Montserrat',sans-serif;font-weight:600;font-size:13px;letter-spacing:0.16em;text-transform:uppercase;color:#108474;text-decoration:none;border-bottom:1px solid #108474;padding-bottom:5px;">Saber más</a>
+      </div>
+      <div style="flex:1;display:flex;justify-content:center;">
+        <div data-anim="scale-up" data-vis style="position:relative;width:30vw;height:40vw;max-width:480px;max-height:640px;">
+          <div style="position:absolute;inset:-12% -8%;background:radial-gradient(circle at 50% 50%,rgba(0,166,226,0.26),transparent 68%);filter:blur(38px);animation:glowDrift 8s ease-in-out infinite;"></div>
+          <image-slot id="tx-laser" shape="rounded" radius="4" placeholder="Tratamiento láser" style="position:relative;width:100%;height:100%;"></image-slot>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- T2 ACNÉ -->
+  <section data-screen-label="Tratamiento · Acné" style="position:relative;background:#F3F3F3;padding:10vh 7vw;min-height:90vh;display:flex;align-items:center;">
+    <div data-row style="display:flex;flex-direction:row-reverse;gap:6vw;align-items:center;width:100%;max-width:1280px;margin:0 auto;">
+      <div data-side data-seq style="flex:0 0 40%;display:flex;flex-direction:column;align-items:flex-start;">
+        <span style="font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.3em;color:#9C9C9C;">02 / 05</span>
+        <h3 data-h2 style="margin:18px 0 0;font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(36px,4vw,74px);line-height:1.0;color:#293223;">Acné</h3>
+        <p style="margin:26px 0 0;font-family:'Montserrat',sans-serif;font-weight:300;font-size:clamp(15px,1.15vw,18px);line-height:1.75;color:#666;max-width:42ch;">Protocolos médicos personalizados que controlan el acné activo y atenúan las cicatrices, devolviendo equilibrio y calma a tu piel.</p>
+        <a href="#cta" style="margin-top:34px;font-family:'Montserrat',sans-serif;font-weight:600;font-size:13px;letter-spacing:0.16em;text-transform:uppercase;color:#108474;text-decoration:none;border-bottom:1px solid #108474;padding-bottom:5px;">Saber más</a>
+      </div>
+      <div style="flex:1;display:flex;justify-content:center;">
+        <div data-anim="blur-up" data-vis style="position:relative;width:30vw;height:40vw;max-width:480px;max-height:640px;">
+          <div style="position:absolute;inset:-12% -8%;background:radial-gradient(circle at 50% 50%,rgba(16,132,116,0.26),transparent 68%);filter:blur(38px);animation:glowDrift 9s ease-in-out infinite;"></div>
+          <image-slot id="tx-acne" shape="rounded" radius="4" placeholder="Piel equilibrada" style="position:relative;width:100%;height:100%;"></image-slot>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- T3 ANTIEDAD -->
+  <section data-screen-label="Tratamiento · Antiedad" style="position:relative;background:#FFFFFF;padding:10vh 7vw;min-height:90vh;display:flex;align-items:center;">
+    <div data-row style="display:flex;gap:6vw;align-items:center;width:100%;max-width:1280px;margin:0 auto;">
+      <div data-side data-seq style="flex:0 0 40%;display:flex;flex-direction:column;align-items:flex-start;">
+        <span style="font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.3em;color:#9C9C9C;">03 / 05</span>
+        <h3 data-h2 style="margin:18px 0 0;font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(36px,4vw,74px);line-height:1.0;color:#293223;">Antiedad</h3>
+        <p style="margin:26px 0 0;font-family:'Montserrat',sans-serif;font-weight:300;font-size:clamp(15px,1.15vw,18px);line-height:1.75;color:#666;max-width:42ch;">Medicina estética basada en evidencia: estimulamos colágeno y restauramos firmeza con un resultado natural, nunca artificial.</p>
+        <a href="#cta" style="margin-top:34px;font-family:'Montserrat',sans-serif;font-weight:600;font-size:13px;letter-spacing:0.16em;text-transform:uppercase;color:#108474;text-decoration:none;border-bottom:1px solid #108474;padding-bottom:5px;">Saber más</a>
+      </div>
+      <div style="flex:1;display:flex;justify-content:center;">
+        <div data-anim="rotate-in" data-vis style="position:relative;width:30vw;height:40vw;max-width:480px;max-height:640px;">
+          <div style="position:absolute;inset:-12% -8%;background:radial-gradient(circle at 50% 50%,rgba(98,104,94,0.3),transparent 68%);filter:blur(38px);animation:glowDrift 10s ease-in-out infinite;"></div>
+          <image-slot id="tx-antiedad" shape="rounded" radius="4" placeholder="Firmeza natural" style="position:relative;width:100%;height:100%;"></image-slot>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- T4 MANCHAS -->
+  <section data-screen-label="Tratamiento · Manchas" style="position:relative;background:#F3F3F3;padding:10vh 7vw;min-height:90vh;display:flex;align-items:center;">
+    <div data-row style="display:flex;flex-direction:row-reverse;gap:6vw;align-items:center;width:100%;max-width:1280px;margin:0 auto;">
+      <div data-side data-seq style="flex:0 0 40%;display:flex;flex-direction:column;align-items:flex-start;">
+        <span style="font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.3em;color:#9C9C9C;">04 / 05</span>
+        <h3 data-h2 style="margin:18px 0 0;font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(36px,4vw,74px);line-height:1.0;color:#293223;">Manchas</h3>
+        <p style="margin:26px 0 0;font-family:'Montserrat',sans-serif;font-weight:300;font-size:clamp(15px,1.15vw,18px);line-height:1.75;color:#666;max-width:42ch;">Tratamientos de precisión para hiperpigmentación y melasma, unificando el tono con un enfoque seguro, gradual y medible.</p>
+        <a href="#cta" style="margin-top:34px;font-family:'Montserrat',sans-serif;font-weight:600;font-size:13px;letter-spacing:0.16em;text-transform:uppercase;color:#108474;text-decoration:none;border-bottom:1px solid #108474;padding-bottom:5px;">Saber más</a>
+      </div>
+      <div style="flex:1;display:flex;justify-content:center;">
+        <div data-anim="clip-reveal" data-vis style="position:relative;width:30vw;height:40vw;max-width:480px;max-height:640px;">
+          <div style="position:absolute;inset:-12% -8%;background:radial-gradient(circle at 50% 50%,rgba(0,166,226,0.24),transparent 68%);filter:blur(38px);animation:glowDrift 8.5s ease-in-out infinite;"></div>
+          <image-slot id="tx-manchas" shape="rounded" radius="4" placeholder="Tono unificado" style="position:relative;width:100%;height:100%;"></image-slot>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- T5 LUNARES -->
+  <section data-screen-label="Tratamiento · Lunares" style="position:relative;background:#FFFFFF;padding:10vh 7vw;min-height:90vh;display:flex;align-items:center;">
+    <div data-row style="display:flex;gap:6vw;align-items:center;width:100%;max-width:1280px;margin:0 auto;">
+      <div data-side data-seq style="flex:0 0 40%;display:flex;flex-direction:column;align-items:flex-start;">
+        <span style="font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.3em;color:#9C9C9C;">05 / 05</span>
+        <h3 data-h2 style="margin:18px 0 0;font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(36px,4vw,74px);line-height:1.0;color:#293223;">Revisión de lunares</h3>
+        <p style="margin:26px 0 0;font-family:'Montserrat',sans-serif;font-weight:300;font-size:clamp(15px,1.15vw,18px);line-height:1.75;color:#666;max-width:42ch;">Mapeo digital y dermatoscopia para la detección temprana. Tu seguridad es la base de toda belleza —y de toda piel sana.</p>
+        <a href="#cta" style="margin-top:34px;font-family:'Montserrat',sans-serif;font-weight:600;font-size:13px;letter-spacing:0.16em;text-transform:uppercase;color:#108474;text-decoration:none;border-bottom:1px solid #108474;padding-bottom:5px;">Saber más</a>
+      </div>
+      <div style="flex:1;display:flex;justify-content:center;">
+        <div data-anim="scale-up" data-vis style="position:relative;width:30vw;height:40vw;max-width:480px;max-height:640px;">
+          <div style="position:absolute;inset:-12% -8%;background:radial-gradient(circle at 50% 50%,rgba(0,166,226,0.26),transparent 68%);filter:blur(38px);animation:glowDrift 9.5s ease-in-out infinite;"></div>
+          <image-slot id="tx-lunares" shape="rounded" radius="4" placeholder="Mapeo dermatoscópico" style="position:relative;width:100%;height:100%;"></image-slot>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TECNOLOGÍA ============ -->
+  <section data-screen-label="Tecnología" style="position:relative;background:#1A1C20;padding:18vh 7vw;overflow:hidden;">
+    <div style="position:absolute;top:-10%;left:50%;transform:translateX(-50%);width:70vw;height:70vw;max-width:900px;max-height:900px;background:radial-gradient(circle,rgba(0,166,226,0.16),transparent 62%);filter:blur(40px);pointer-events:none;animation:glowDrift 11s ease-in-out infinite;"></div>
+    <div style="position:relative;max-width:1280px;margin:0 auto;">
+      <div data-side data-seq style="display:flex;flex-direction:column;align-items:flex-start;max-width:44%;">
+        <span style="font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.42em;text-transform:uppercase;color:#00A6E2;margin-bottom:26px;">Tecnología</span>
+        <h2 data-h2 style="margin:0;font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(40px,4.8vw,86px);line-height:1.0;color:#F3F3F3;letter-spacing:-0.01em;">Precisión que puedes medir</h2>
+        <p style="margin:30px 0 0;font-family:'Montserrat',sans-serif;font-weight:300;font-size:clamp(15px,1.2vw,19px);line-height:1.75;color:#9C9C9C;max-width:46ch;">Equipos de diagnóstico de alta resolución y plataformas láser calibradas al detalle. Cada parámetro, controlado; cada resultado, trazable.</p>
+      </div>
+      <div data-techgrid data-anim="stagger-up" style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:9vh;">
+        <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border-radius:6px;padding:40px 34px;">
+          <div style="font-family:'Montserrat',sans-serif;font-weight:200;font-size:52px;color:#00A6E2;line-height:1;">4K</div>
+          <h4 style="margin:24px 0 12px;font-family:'Montserrat',sans-serif;font-weight:600;font-size:18px;color:#F3F3F3;letter-spacing:0.01em;">Dermatoscopia digital</h4>
+          <p style="margin:0;font-family:'Montserrat',sans-serif;font-weight:300;font-size:14px;line-height:1.7;color:#9C9C9C;">Mapeo y seguimiento de lunares con imagen de altísima resolución.</p>
+        </div>
+        <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border-radius:6px;padding:40px 34px;">
+          <div style="font-family:'Montserrat',sans-serif;font-weight:200;font-size:52px;color:#00A6E2;line-height:1;">λ</div>
+          <h4 style="margin:24px 0 12px;font-family:'Montserrat',sans-serif;font-weight:600;font-size:18px;color:#F3F3F3;letter-spacing:0.01em;">Láser multionda</h4>
+          <p style="margin:0;font-family:'Montserrat',sans-serif;font-weight:300;font-size:14px;line-height:1.7;color:#9C9C9C;">Longitudes de onda calibradas para cada tipo y fototipo de piel.</p>
+        </div>
+        <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border-radius:6px;padding:40px 34px;">
+          <div style="font-family:'Montserrat',sans-serif;font-weight:200;font-size:52px;color:#00A6E2;line-height:1;">AI</div>
+          <h4 style="margin:24px 0 12px;font-family:'Montserrat',sans-serif;font-weight:600;font-size:18px;color:#F3F3F3;letter-spacing:0.01em;">Análisis cutáneo por IA</h4>
+          <p style="margin:0;font-family:'Montserrat',sans-serif;font-weight:300;font-size:14px;line-height:1.7;color:#9C9C9C;">Medición objetiva de textura, manchas y firmeza, antes y después.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STATS ============ -->
+  <section data-screen-label="Cifras" style="position:relative;background:#293223;padding:20vh 7vw;overflow:hidden;">
+    <div style="position:absolute;inset:0;background:rgba(14,16,18,0.9);"></div>
+    <div style="position:absolute;bottom:-20%;right:-5%;width:50vw;height:50vw;max-width:680px;max-height:680px;background:radial-gradient(circle,rgba(0,166,226,0.14),transparent 65%);filter:blur(40px);pointer-events:none;"></div>
+    <div style="position:relative;max-width:1280px;margin:0 auto;">
+      <div data-anim="fade-up" style="margin-bottom:9vh;">
+        <span style="font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.42em;text-transform:uppercase;color:#00A6E2;">En cifras</span>
+      </div>
+      <div data-statgrid style="display:grid;grid-template-columns:repeat(4,1fr);gap:40px;">
+        <div data-anim="fade-up">
+          <div class="statnum" data-count="18" data-suffix="" style="font-family:'Montserrat',sans-serif;font-weight:200;font-size:clamp(56px,6vw,108px);line-height:1;color:#F3F3F3;">0</div>
+          <div style="font-family:'Montserrat',sans-serif;font-weight:400;font-size:14px;letter-spacing:0.04em;color:#9C9C9C;margin-top:16px;border-top:1px solid rgba(255,255,255,0.14);padding-top:16px;">Años de experiencia</div>
+        </div>
+        <div data-anim="fade-up">
+          <div class="statnum" data-count="24000" data-suffix="+" style="font-family:'Montserrat',sans-serif;font-weight:200;font-size:clamp(56px,6vw,108px);line-height:1;color:#F3F3F3;">0</div>
+          <div style="font-family:'Montserrat',sans-serif;font-weight:400;font-size:14px;letter-spacing:0.04em;color:#9C9C9C;margin-top:16px;border-top:1px solid rgba(255,255,255,0.14);padding-top:16px;">Pacientes atendidos</div>
+        </div>
+        <div data-anim="fade-up">
+          <div class="statnum" data-count="98" data-suffix="%" style="font-family:'Montserrat',sans-serif;font-weight:200;font-size:clamp(56px,6vw,108px);line-height:1;color:#00A6E2;">0</div>
+          <div style="font-family:'Montserrat',sans-serif;font-weight:400;font-size:14px;letter-spacing:0.04em;color:#9C9C9C;margin-top:16px;border-top:1px solid rgba(255,255,255,0.14);padding-top:16px;">Satisfacción</div>
+        </div>
+        <div data-anim="fade-up">
+          <div class="statnum" data-count="65000" data-suffix="+" style="font-family:'Montserrat',sans-serif;font-weight:200;font-size:clamp(56px,6vw,108px);line-height:1;color:#F3F3F3;">0</div>
+          <div style="font-family:'Montserrat',sans-serif;font-weight:400;font-size:14px;letter-spacing:0.04em;color:#9C9C9C;margin-top:16px;border-top:1px solid rgba(255,255,255,0.14);padding-top:16px;">Tratamientos realizados</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TESTIMONIOS ============ -->
+  <section data-screen-label="Testimonios" style="position:relative;background:#F3F3F3;padding:20vh 7vw;min-height:90vh;display:flex;align-items:center;">
+    <div data-anim="fade-up" style="width:100%;max-width:1040px;margin:0 auto;text-align:center;">
+      <span style="font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.42em;text-transform:uppercase;color:#108474;">Testimonios</span>
+      <div id="testi-track" style="position:relative;margin-top:48px;min-height:34vh;">
+        <blockquote class="testi" data-active="1" style="position:absolute;inset:0;margin:0;opacity:1;transition:opacity 0.9s ease;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+          <p style="margin:0;font-family:'Cormorant Garamond',serif;font-weight:400;font-style:italic;font-size:clamp(28px,3.4vw,56px);line-height:1.25;color:#293223;max-width:22ch;">«Por primera vez siento que entienden mi piel. Resultados reales, sin promesas vacías.»</p>
+          <cite style="margin-top:32px;font-family:'Montserrat',sans-serif;font-weight:500;font-style:normal;font-size:13px;letter-spacing:0.22em;text-transform:uppercase;color:#62685E;">Marina R.</cite>
+        </blockquote>
+        <blockquote class="testi" data-active="0" style="position:absolute;inset:0;margin:0;opacity:0;transition:opacity 0.9s ease;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+          <p style="margin:0;font-family:'Cormorant Garamond',serif;font-weight:400;font-style:italic;font-size:clamp(28px,3.4vw,56px);line-height:1.25;color:#293223;max-width:22ch;">«Profesionales, cercanos y rigurosos. El mapeo de lunares me dio una tranquilidad enorme.»</p>
+          <cite style="margin-top:32px;font-family:'Montserrat',sans-serif;font-weight:500;font-style:normal;font-size:13px;letter-spacing:0.22em;text-transform:uppercase;color:#62685E;">Javier L.</cite>
+        </blockquote>
+        <blockquote class="testi" data-active="0" style="position:absolute;inset:0;margin:0;opacity:0;transition:opacity 0.9s ease;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+          <p style="margin:0;font-family:'Cormorant Garamond',serif;font-weight:400;font-style:italic;font-size:clamp(28px,3.4vw,56px);line-height:1.25;color:#293223;max-width:22ch;">«Mi piel está más luminosa y sana que nunca. Un cuidado que de verdad se nota.»</p>
+          <cite style="margin-top:32px;font-family:'Montserrat',sans-serif;font-weight:500;font-style:normal;font-size:13px;letter-spacing:0.22em;text-transform:uppercase;color:#62685E;">Elena T.</cite>
+        </blockquote>
+      </div>
+      <div id="testi-dots" style="display:flex;gap:12px;justify-content:center;margin-top:6vh;">
+        <button data-dot="0" style="width:9px;height:9px;border-radius:50%;border:none;padding:0;cursor:pointer;background:#62685E;transition:background .3s,transform .3s;"></button>
+        <button data-dot="1" style="width:9px;height:9px;border-radius:50%;border:none;padding:0;cursor:pointer;background:#D9D9DC;transition:background .3s,transform .3s;"></button>
+        <button data-dot="2" style="width:9px;height:9px;border-radius:50%;border:none;padding:0;cursor:pointer;background:#D9D9DC;transition:background .3s,transform .3s;"></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CTA FINAL ============ -->
+  <section id="cta" data-screen-label="CTA" style="position:relative;background:#1A1C20;padding:24vh 7vw;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60vw;height:60vw;max-width:800px;max-height:800px;background:radial-gradient(circle,rgba(0,166,226,0.18),transparent 62%);filter:blur(44px);pointer-events:none;animation:glowDrift 9s ease-in-out infinite;"></div>
+    <div data-anim="scale-up" style="position:relative;text-align:center;max-width:880px;">
+      <h2 data-h2 style="margin:0;font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(48px,7vw,128px);line-height:0.98;color:#F3F3F3;letter-spacing:-0.01em;">Agenda tu valoración</h2>
+      <p style="margin:32px auto 0;font-family:'Montserrat',sans-serif;font-weight:300;font-size:clamp(16px,1.3vw,21px);line-height:1.7;color:#9C9C9C;max-width:46ch;">Una primera consulta para entender tu piel y diseñar el plan que la cuida.</p>
+      <a href="#" style="display:inline-block;margin-top:46px;font-family:'Montserrat',sans-serif;font-weight:600;font-size:14px;letter-spacing:0.14em;text-transform:uppercase;color:#0E1012;background:#00A6E2;padding:20px 46px;border-radius:40px;text-decoration:none;box-shadow:0 0 40px rgba(0,166,226,0.4);transition:transform .3s,box-shadow .3s;" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 0 60px rgba(0,166,226,0.6)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 0 40px rgba(0,166,226,0.4)'">Reservar cita</a>
+    </div>
+  </section>
+
+  <footer style="position:relative;background:#0E1012;padding:60px 7vw;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:20px;">
+    <div style="font-family:'Montserrat',sans-serif;font-weight:700;letter-spacing:0.42em;font-size:15px;color:#F3F3F3;">LUMINA</div>
+    <div style="font-family:'Montserrat',sans-serif;font-weight:300;font-size:12px;letter-spacing:0.08em;color:#62685E;">Dermatología de precisión · © 2026</div>
+  </footer>
+
+</main>
+
+<!-- PERSISTENT CTA BAR -->
+<div id="cta-bar" data-persist="true" style="position:fixed;left:0;right:0;bottom:0;z-index:55;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:16px 7vw;background:rgba(14,16,18,0.72);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid rgba(0,166,226,0.25);transform:translateY(130%);">
+  <span style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:clamp(17px,1.6vw,24px);color:#F3F3F3;">Cuidamos la salud de tu piel.</span>
+  <a href="#cta" style="flex:none;font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#0E1012;background:#00A6E2;padding:13px 30px;border-radius:30px;text-decoration:none;">Reservar</a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  componentDidMount() {
+    this._tIndex = 0;
+    this._waitForLibs(0);
+  }
+
+  componentWillUnmount() {
+    if (this._testiTimer) clearInterval(this._testiTimer);
+    if (this._raf) cancelAnimationFrame(this._raf);
+    if (this._lenis && this._lenis.destroy) this._lenis.destroy();
+    if (window.ScrollTrigger) window.ScrollTrigger.getAll().forEach(t => t.kill());
+    if (this._onResize) window.removeEventListener('resize', this._onResize);
+  }
+
+  _waitForLibs(tries) {
+    if (window.gsap && window.ScrollTrigger && window.Lenis) {
+      this._init();
+    } else if (tries < 120) {
+      setTimeout(() => this._waitForLibs(tries + 1), 50);
+    }
+  }
+
+  _init() {
+    const gsap = window.gsap;
+    const ScrollTrigger = window.ScrollTrigger;
+    gsap.registerPlugin(ScrollTrigger);
+
+    // ---- Lenis smooth scroll ----
+    const lenis = new window.Lenis({ duration: 1.15, smoothWheel: true });
+    this._lenis = lenis;
+    lenis.on('scroll', ScrollTrigger.update);
+    gsap.ticker.add((time) => lenis.raf(time * 1000));
+    gsap.ticker.lagSmoothing(0);
+
+    this._startCanvas();
+    this._buildAnimations();
+    this._startTestimonials();
+
+    // refresh once fonts/images settle
+    setTimeout(() => ScrollTrigger.refresh(), 400);
+    window.addEventListener('load', () => ScrollTrigger.refresh());
+  }
+
+  _buildAnimations() {
+    const gsap = window.gsap;
+    const ScrollTrigger = window.ScrollTrigger;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const animate = (el, type) => {
+      const st = { trigger: el, start: 'top 82%' };
+      if (reduce) { gsap.set(el, { opacity: 1, clearProps: 'all' }); return; }
+      switch (type) {
+        case 'fade-up':
+          gsap.from(el, { scrollTrigger: st, y: 64, autoAlpha: 0, duration: 1.1, ease: 'power3.out' });
+          break;
+        case 'scale-up':
+          gsap.from(el, { scrollTrigger: st, y: 56, scale: 0.88, autoAlpha: 0, duration: 1.2, ease: 'power3.out' });
+          break;
+        case 'blur-up':
+          gsap.fromTo(el, { y: 56, autoAlpha: 0, filter: 'blur(16px)' },
+            { scrollTrigger: st, y: 0, autoAlpha: 1, filter: 'blur(0px)', duration: 1.25, ease: 'power3.out' });
+          break;
+        case 'clip-reveal':
+          gsap.fromTo(el, { clipPath: 'inset(100% 0% 0% 0%)', y: 48 },
+            { scrollTrigger: st, clipPath: 'inset(0% 0% 0% 0%)', y: 0, duration: 1.3, ease: 'power4.out' });
+          break;
+        case 'rotate-in':
+          gsap.from(el, { scrollTrigger: st, y: 80, rotationX: -42, transformPerspective: 900, transformOrigin: 'center bottom', autoAlpha: 0, duration: 1.25, ease: 'power3.out' });
+          break;
+        case 'stagger-up':
+          gsap.from(el.children, { scrollTrigger: st, y: 60, autoAlpha: 0, duration: 1.0, ease: 'power3.out', stagger: 0.13 });
+          break;
+      }
+    };
+
+    document.querySelectorAll('[data-anim]').forEach((el) => animate(el, el.getAttribute('data-anim')));
+
+    // staggered text sequences: label -> title -> body -> cta
+    if (!reduce) {
+      document.querySelectorAll('[data-seq]').forEach((seq) => {
+        gsap.from(Array.from(seq.children), {
+          scrollTrigger: { trigger: seq, start: 'top 80%' },
+          y: 44, autoAlpha: 0, duration: 0.95, ease: 'power3.out', stagger: 0.12
+        });
+      });
+    }
+
+    // hero scrubbed fade + canvas fade
+    const heroOverlay = document.getElementById('hero-overlay');
+    const hero = heroOverlay && heroOverlay.closest('section');
+    const canvas = document.getElementById('bgfx');
+    if (hero) {
+      gsap.to(heroOverlay, {
+        autoAlpha: 0, y: -70, ease: 'none',
+        scrollTrigger: { trigger: hero, start: 'top top', end: 'bottom bottom', scrub: true }
+      });
+      if (canvas) {
+        gsap.to(canvas, {
+          opacity: 0.0, ease: 'none',
+          scrollTrigger: { trigger: hero, start: '40% top', end: 'bottom bottom', scrub: true,
+            onUpdate: (self) => { this._fxFade = 1 - self.progress; },
+            onLeave: () => { canvas.style.display = 'none'; },
+            onEnterBack: () => { canvas.style.display = 'block'; }
+          }
+        });
+      }
+    }
+
+    // counters
+    document.querySelectorAll('.statnum').forEach((el) => {
+      const target = parseFloat(el.getAttribute('data-count')) || 0;
+      const suffix = el.getAttribute('data-suffix') || '';
+      const obj = { v: 0 };
+      gsap.fromTo(obj, { v: 0 }, {
+        v: target, duration: 2.2, ease: 'power2.out',
+        scrollTrigger: { trigger: el, start: 'top 85%', once: true },
+        onUpdate: () => {
+          el.textContent = Math.round(obj.v).toLocaleString('es-ES') + suffix;
+        },
+        onComplete: () => {
+          el.textContent = target.toLocaleString('es-ES') + suffix;
+        }
+      });
+    });
+
+    // persistent CTA bar reveal (data-persist -> appears once, never hides)
+    const bar = document.getElementById('cta-bar');
+    if (bar) {
+      ScrollTrigger.create({
+        trigger: hero || document.body,
+        start: 'bottom 75%',
+        onEnter: () => gsap.to(bar, { y: 0, duration: 0.8, ease: 'power3.out' })
+      });
+    }
+  }
+
+  _startTestimonials() {
+    const slides = Array.from(document.querySelectorAll('.testi'));
+    const dots = Array.from(document.querySelectorAll('[data-dot]'));
+    if (!slides.length) return;
+    const show = (i) => {
+      this._tIndex = i;
+      slides.forEach((s, k) => { s.style.opacity = k === i ? '1' : '0'; });
+      dots.forEach((d, k) => {
+        d.style.background = k === i ? '#62685E' : '#D9D9DC';
+        d.style.transform = k === i ? 'scale(1.25)' : 'scale(1)';
+      });
+    };
+    dots.forEach((d, k) => d.addEventListener('click', () => { show(k); reset(); }));
+    const advance = () => show((this._tIndex + 1) % slides.length);
+    const reset = () => { clearInterval(this._testiTimer); this._testiTimer = setInterval(advance, 5200); };
+    show(0);
+    reset();
+  }
+
+  _startCanvas() {
+    const canvas = document.getElementById('bgfx');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let W, H, dpr;
+    this._fxFade = 1;
+
+    const cells = [];
+    const palette = [
+      'rgba(0,166,226,', 'rgba(16,132,116,', 'rgba(98,104,94,', 'rgba(0,166,226,'
+    ];
+
+    const resize = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = window.innerWidth; H = window.innerHeight;
+      canvas.width = W * dpr; canvas.height = H * dpr;
+      canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    this._onResize = resize;
+    resize();
+    window.addEventListener('resize', resize);
+
+    const N = window.innerWidth < 768 ? 26 : 52;
+    for (let i = 0; i < N; i++) {
+      cells.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: 40 + Math.random() * 180,
+        vx: (Math.random() - 0.5) * 0.18,
+        vy: (Math.random() - 0.5) * 0.18,
+        a: 0.04 + Math.random() * 0.10,
+        c: palette[(Math.random() * palette.length) | 0],
+        ph: Math.random() * Math.PI * 2
+      });
+    }
+    // a few bright focal blooms
+    const blooms = [];
+    for (let i = 0; i < 4; i++) {
+      blooms.push({
+        x: Math.random() * W, y: Math.random() * H,
+        r: 160 + Math.random() * 220,
+        vx: (Math.random() - 0.5) * 0.12, vy: (Math.random() - 0.5) * 0.12,
+        ph: Math.random() * Math.PI * 2
+      });
+    }
+
+    let t = 0;
+    const draw = () => {
+      t += 0.012;
+      const fade = this._fxFade != null ? this._fxFade : 1;
+      // deep night-green base
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, '#0E1012');
+      g.addColorStop(0.55, '#11150F');
+      g.addColorStop(1, '#0B0D0A');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = fade;
+
+      blooms.forEach((b) => {
+        b.x += b.vx; b.y += b.vy; b.ph += 0.01;
+        if (b.x < -b.r) b.x = W + b.r; if (b.x > W + b.r) b.x = -b.r;
+        if (b.y < -b.r) b.y = H + b.r; if (b.y > H + b.r) b.y = -b.r;
+        const pulse = 0.5 + 0.5 * Math.sin(b.ph);
+        const rg = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
+        rg.addColorStop(0, 'rgba(0,166,226,' + (0.10 * pulse).toFixed(3) + ')');
+        rg.addColorStop(1, 'rgba(0,166,226,0)');
+        ctx.fillStyle = rg;
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
+      });
+
+      cells.forEach((c) => {
+        c.x += c.vx; c.y += c.vy; c.ph += 0.008;
+        if (c.x < -c.r) c.x = W + c.r; if (c.x > W + c.r) c.x = -c.r;
+        if (c.y < -c.r) c.y = H + c.r; if (c.y > H + c.r) c.y = -c.r;
+        const pulse = 0.6 + 0.4 * Math.sin(c.ph);
+        const rg = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, c.r);
+        rg.addColorStop(0, c.c + (c.a * pulse).toFixed(3) + ')');
+        rg.addColorStop(0.7, c.c + (c.a * pulse * 0.3).toFixed(3) + ')');
+        rg.addColorStop(1, c.c + '0)');
+        ctx.fillStyle = rg;
+        ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); ctx.fill();
+        // thin membrane ring for the "cell" read
+        ctx.strokeStyle = c.c + (c.a * pulse * 0.5).toFixed(3) + ')';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(c.x, c.y, c.r * 0.62, 0, Math.PI * 2); ctx.stroke();
+      });
+
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      this._raf = requestAnimationFrame(draw);
+    };
+    draw();
+  }
+}
+</script>
+</body>
+</html>

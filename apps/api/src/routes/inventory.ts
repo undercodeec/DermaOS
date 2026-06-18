@@ -1,0 +1,76 @@
+import { Router } from "express";
+import { z } from "zod";
+import { prisma } from "../db.js";
+import { requireAuth, requireModule } from "../middleware/auth.js";
+import { audit } from "../lib/audit.js";
+import { notFound } from "../lib/errors.js";
+
+const router = Router();
+router.use(requireAuth, requireModule("inventario"));
+
+router.get("/", async (_req, res, next) => {
+  try {
+    const list = await prisma.inventoryItem.findMany({ orderBy: { name: "asc" } });
+    res.json(list);
+  } catch (e) {
+    next(e);
+  }
+});
+
+const newItemSchema = z.object({
+  name: z.string().min(1),
+  type: z.enum(["vial", "principio_activo", "insumo", "farmaco"]),
+  unit: z.string().min(1),
+  stock: z.number().nonnegative().default(0),
+  minStock: z.number().nonnegative().default(0),
+  lotNumber: z.string().optional(),
+  expiryDate: z.string().optional(),
+});
+
+router.post("/", requireModule("inventario", "write"), async (req, res, next) => {
+  try {
+    const b = newItemSchema.parse(req.body);
+    const item = await prisma.inventoryItem.create({
+      data: {
+        name: b.name,
+        type: b.type,
+        unit: b.unit,
+        stock: b.stock,
+        minStock: b.minStock,
+        lotNumber: b.lotNumber ?? null,
+        expiryDate: b.expiryDate ? new Date(b.expiryDate) : null,
+      },
+    });
+    await audit(req, "Creó ítem de inventario", "sistema", item.name);
+    res.status(201).json(item);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Ajuste de stock (puede ser positivo o negativo)
+const adjustSchema = z.object({ delta: z.number() });
+
+router.patch("/:id/adjust", requireModule("inventario", "write"), async (req, res, next) => {
+  try {
+    const cur = await prisma.inventoryItem.findUnique({ where: { id: req.params.id } });
+    if (!cur) throw notFound("Ítem no encontrado");
+    const { delta } = adjustSchema.parse(req.body);
+    const newStock = Math.max(0, Number(cur.stock) + delta);
+    const item = await prisma.inventoryItem.update({
+      where: { id: cur.id },
+      data: { stock: newStock },
+    });
+    await audit(
+      req,
+      delta >= 0 ? "Repuso inventario" : "Consumió inventario",
+      "sistema",
+      `${item.name} · ${delta >= 0 ? "+" : ""}${delta} ${item.unit}`,
+    );
+    res.json(item);
+  } catch (e) {
+    next(e);
+  }
+});
+
+export default router;

@@ -1,0 +1,28 @@
+# ─────────────────────────────────────────────
+# DERMA-OS · Netlify — Dashboard (React SPA)
+# ─────────────────────────────────────────────
+
+[build]
+  base    = "apps/dashboard"
+  command = "pnpm build"
+  publish = "dist"
+
+# SPA fallback — necesario para que React Router funcione
+# al refrescar /patients, /appointments, etc.
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
+
+# Headers de seguridad y cache
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options  = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy  = "strict-origin-when-cross-origin"

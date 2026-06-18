@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(pnpm *)",
+      "Bash(supabase --version)",
+      "Bash(docker --version)",
+      "Bash(docker info *)",
+      "PowerShell(Get-Command *)",
+      "Bash(netstat -ano)",
+      "Bash(tasklist /FI \"PID eq 13208\" /FO CSV)",
+      "PowerShell(Get-Process *)",
+      "Bash(dir \"C:\\\\Users\\\\USUARIO\\\\.claude\\\\skills\" /B)",
+      "Bash(dir \"C:\\\\Users\\\\USUARIO\\\\Documents\\\\Demo Dasboard Centro Dermatologico\\\\.claude\\\\skills\" /B)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(echo \"API_EXIT=$?\")",
+      "Bash(echo \"DASH_EXIT=$?\")",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

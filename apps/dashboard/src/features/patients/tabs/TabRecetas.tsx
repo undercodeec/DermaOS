@@ -1,0 +1,82 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { Btn, EmptyState } from "@/components/Primitives";
+import { fmtDate } from "@/lib/helpers";
+import { roleCanWrite } from "@/lib/permissions";
+import type { ClinicalRecord } from "@/lib/types";
+import type { TabProps } from "./TabProps";
+import { NewRecetaModal } from "../modals/NewRecetaModal";
+
+export function TabRecetas({ patient, role }: TabProps) {
+  const [open, setOpen] = useState(false);
+  const canWrite = roleCanWrite(role, "historia");
+
+  const { data: rx = [], isLoading } = useQuery({
+    queryKey: ["recetas", patient.id],
+    queryFn: () => api.get<ClinicalRecord[]>(`/patients/${patient.id}/recetas`),
+  });
+
+  return (
+    <div>
+      {canWrite ? (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+          <Btn kind="primary" icon="pill" onClick={() => setOpen(true)}>
+            Nueva receta
+          </Btn>
+        </div>
+      ) : null}
+
+      {isLoading ? (
+        <div className="card">
+          <EmptyState icon="pill">Cargando…</EmptyState>
+        </div>
+      ) : rx.length === 0 ? (
+        <div className="card">
+          <EmptyState icon="pill">Sin recetas registradas.</EmptyState>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          {rx.map((r) => (
+            <div key={r.id} className="rx-card">
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "baseline",
+                  marginBottom: 8,
+                }}
+              >
+                <strong>Fórmula magistral</strong>
+                <span className="muted tnum" style={{ fontSize: 12.5 }}>
+                  {fmtDate(r.date)}
+                </span>
+              </div>
+              {(r.prescription?.items ?? []).map((it, i) => (
+                <div key={i} style={{ marginBottom: 10 }}>
+                  {it.ingredients.map((g, j) => (
+                    <div key={j} className="rx-ing">
+                      <span>{g.name}</span>
+                      <b>{g.concentration}</b>
+                    </div>
+                  ))}
+                  <div className="muted" style={{ fontSize: 13, marginTop: 5 }}>
+                    {it.vehicle} · {it.quantity}
+                  </div>
+                  <div className="rx-instr">{it.instructions}</div>
+                </div>
+              ))}
+              <div style={{ marginTop: 10 }}>
+                <span className="muted" style={{ fontSize: 12.5 }}>
+                  {r.professional?.name ?? ""}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {open ? <NewRecetaModal patient={patient} onClose={() => setOpen(false)} /> : null}
+    </div>
+  );
+}

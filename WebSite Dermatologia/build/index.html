@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&amp;family=Montserrat:wght@200;300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lenis@1.1.13/dist/lenis.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{background:#2A1408;color:#1C1008;font-family:'Montserrat',sans-serif;-webkit-font-smoothing:antialiased}
+  ::selection{background:#C9A87C;color:#fff}
+  @keyframes scrollPulse{0%{transform:translateY(0);opacity:.9}50%{transform:translateY(10px);opacity:.35}100%{transform:translateY(0);opacity:.9}}
+  @keyframes glowPulse{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:.85;transform:scale(1.06)}}
+  image-slot{display:block}
+  :root{
+    --color-primary:#5C2D1A;
+    --color-secondary:#C4622D;
+    --color-accent:#8B4513;
+    --color-bg-main:#FAF6F1;
+    --color-bg-section:#F2E0CC;
+    --color-bg-dark:#2A1408;
+    --color-text-primary:#1C1008;
+    --color-text-secondary:#7A6A5F;
+    --color-text-light:#FAF6F1;
+    --color-gold:#C9A87C;
+    --color-whatsapp:#25D366;
+  }
+  @media (max-width:768px){
+    [data-row]{grid-template-columns:1fr !important;gap:36px !important;text-align:center !important}
+    [data-row] [data-textcol]{align-items:center !important;text-align:center !important;max-width:100% !important}
+    [data-visual]{margin:0 auto !important;width:86vw !important;max-width:420px !important;height:300px !important}
+    [data-hero-title]{font-size:clamp(3rem,18vw,5.5rem) !important}
+    [data-sec-title]{font-size:clamp(2.4rem,10vw,3.4rem) !important}
+    [data-pad]{padding-left:24px !important;padding-right:24px !important}
+    [data-statgrid]{grid-template-columns:1fr 1fr !important}
+    [data-techgrid]{grid-template-columns:1fr !important}
+    [data-screen-label="Tecnolog\00EDa"] > div:first-child{grid-template-columns:1fr !important}
+    [data-darksec]{background:rgba(42,20,8,.94) !important}
+    [data-cta-persist]{right:16px !important;left:16px !important;bottom:16px !important}
+    #ig-reel-wrap{min-height:auto !important}
+    #ig-reel-wrap blockquote{max-width:100% !important;min-width:0 !important}
+    [data-screen-label="Filosof\00EDa"] > div{grid-template-columns:1fr !important}
+    #proceso{height:400vh !important}
+    .proceso-step{grid-template-columns:1fr !important;padding:0 28px !important}
+    .proceso-col-img{display:none !important}
+    .proceso-step h2{font-size:clamp(2.2rem,9vw,3.2rem) !important}
+  }
+</style>
+</helmet>
+
+<canvas id="bg-canvas" style="position:fixed;inset:0;width:100vw;height:100vh;z-index:0;display:block"></canvas>
+
+<div id="hero-img" style="position:fixed;inset:0;z-index:1;background:url('./hero-bg.png') center 20% / cover no-repeat;will-change:opacity"></div>
+<div id="hero-img-overlay" style="position:fixed;inset:0;z-index:2;background:linear-gradient(120deg,rgba(42,20,8,.72) 0%,rgba(42,20,8,.38) 52%,rgba(42,20,8,.18) 100%);pointer-events:none;will-change:opacity"></div>
+
+<nav id="topnav" style="position:fixed;top:0;left:0;right:0;z-index:40;display:flex;align-items:center;justify-content:space-between;padding:18px clamp(24px,5vw,72px);background:linear-gradient(180deg,rgba(42,20,8,.72) 0%,transparent 100%)">
+  <div data-nav-target="Hero" style="cursor:pointer;display:flex;align-items:center">
+    <img src="./dise-o-sin-t-tulo-3--mqjq3j29.png" alt="Dermapiel &amp; Pelo" style="height:56px;width:auto;object-fit:contain;display:block;border-radius:8px">
+  </div>
+  <div style="display:flex;gap:34px;align-items:center;font-size:12.5px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#fff">
+    <span class="nav-item" data-nav-target="Filosofía" style="opacity:.6;cursor:pointer;padding-bottom:3px;border-bottom:1px solid transparent;transition:opacity .4s,border-color .4s">Nosotros</span>
+    <span class="nav-item" data-nav-target="Tratamientos" style="opacity:.6;cursor:pointer;padding-bottom:3px;border-bottom:1px solid transparent;transition:opacity .4s,border-color .4s">Servicios</span>
+    <span class="nav-item" data-nav-target="Tecnología" style="opacity:.6;cursor:pointer;padding-bottom:3px;border-bottom:1px solid transparent;transition:opacity .4s,border-color .4s">Tecnología</span>
+  </div>
+</nav>
+<div id="nav-progress" style="position:fixed;left:0;right:0;top:78px;z-index:39;height:2px;background:rgba(201,168,124,.22)">
+  <div id="nav-progress-bar" style="height:100%;width:100%;transform-origin:left center;transform:scaleX(0);background:#C9A87C;transition:transform .7s cubic-bezier(.16,1,.3,1);box-shadow:0 0 12px rgba(201,168,124,.75)"></div>
+</div>
+
+<div id="hero-overlay" style="position:fixed;inset:0;z-index:30;pointer-events:none">
+  <div style="position:absolute;left:clamp(24px,6vw,90px);bottom:14vh;max-width:min(70vw,1100px)">
+    <div data-hero-label="" style="display:flex;align-items:center;gap:14px;margin-bottom:26px">
+      <span style="width:54px;height:1px;background:#C9A87C;display:inline-block"></span>
+      <span style="font-size:12.5px;font-weight:500;letter-spacing:.32em;text-transform:uppercase;color:#c8a882">Dermatología · Tricología · Quito</span>
+    </div>
+    <h1 data-hero-title="" style="font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(3rem,9vw,8.5rem);line-height:.96;color:#FFFFFF;letter-spacing:-.01em">Piel, cabello y uñas<br>con <span style="font-style:italic;color:#f0d5b4">tecnología avanzada</span></h1>
+    <p data-hero-sub="" style="margin-top:30px;max-width:520px;font-size:16px;font-weight:300;line-height:1.7;color:#e8d9c5">Diagnóstico médico especializado para piel, cabello y uñas. Atención para niños, adolescentes y adultos en Quito, Ecuador.</p>
+  </div>
+  <div data-scroll-ind="" style="position:absolute;left:50%;bottom:34px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:10px">
+    <span style="font-size:10.5px;letter-spacing:.3em;text-transform:uppercase;color:#c8a882">Scroll</span>
+    <span style="width:1px;height:42px;background:linear-gradient(#C9A87C,transparent);animation:scrollPulse 2.2s ease-in-out infinite"></span>
+  </div>
+</div>
+
+<main id="content" style="position:relative;z-index:10">
+
+  <!-- HERO spacer: transparent so canvas + overlay show -->
+  <section data-screen-label="Hero" style="height:100vh"></section>
+
+  <!-- FILOSOFÍA -->
+  <section data-screen-label="Filosofía" data-pad="" style="position:relative;background:#FAF6F1;padding:14vh clamp(24px,6vw,90px);min-height:108vh;display:flex;align-items:center">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:clamp(48px,7vw,110px);align-items:center;width:100%;max-width:1500px;margin:0 auto">
+      <!-- Columna izquierda: texto -->
+      <div data-seq="">
+        <div data-seq-item="" style="display:flex;align-items:center;gap:14px;margin-bottom:30px">
+          <span style="width:46px;height:1px;background:#C4622D"></span>
+          <span style="font-size:12px;font-weight:600;letter-spacing:.28em;text-transform:uppercase;color:#8B4513">Nuestro enfoque</span>
+        </div>
+        <h2 data-seq-item="" data-sec-title="" style="font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(2.2rem,4.5vw,4.6rem);line-height:1.04;color:#1C1008;letter-spacing:-.01em">Diagnóstico médico,<br>no tratamientos <span style="font-style:italic">genéricos</span>.</h2>
+        <p data-seq-item="" style="margin-top:30px;font-size:16px;font-weight:300;line-height:1.8;color:#666">En Dermapiel &amp; Pelo tratamos la causa raíz, no solo los síntomas. Combinamos la mirada médica de la dermatología y la tricología con tecnología de última generación, para cuidar tu piel, tu cabello y tus uñas en cada etapa de la vida.</p>
+        <div data-seq-item="" style="margin-top:36px;display:flex;gap:40px;flex-wrap:wrap">
+          <div><div style="font-family:'Montserrat';font-weight:700;font-size:14px;color:#1C1008;letter-spacing:.04em">Diagnóstico personalizado</div><div style="font-size:13px;font-weight:300;color:#7A6A5F;margin-top:6px">Evaluación médica especializada</div></div>
+          <div><div style="font-family:'Montserrat';font-weight:700;font-size:14px;color:#1C1008;letter-spacing:.04em">Para toda la familia</div><div style="font-size:13px;font-weight:300;color:#7A6A5F;margin-top:6px">Niños, adolescentes y adultos</div></div>
+        </div>
+      </div>
+      <!-- Columna derecha: reel Instagram (solo video, sin descripción) -->
+      <div id="ig-reel-wrap" style="display:flex;align-items:center;justify-content:center">
+        <div style="position:relative;width:min(340px,100%);overflow:hidden;border-radius:14px;box-shadow:0 12px 50px rgba(42,20,8,.28)">
+          <!-- altura del contenedor = solo la parte de video (recorta header ~56px y caption ~160px) -->
+          <div style="height:540px;overflow:hidden;position:relative">
+            <iframe src="https://www.instagram.com/reel/DZNpkWvOmcu/embed/" style="position:absolute;top:-54px;left:0;width:100%;height:760px;border:0;display:block" allowtransparency="true" allowfullscreen="true" scrolling="no" loading="lazy" title="Reel Dermapiel &amp; Pelo"></iframe>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRATAMIENTOS intro -->
+  <section data-screen-label="Tratamientos" data-pad="" style="background:#FAF6F1;padding:6vh clamp(24px,6vw,90px) 2vh">
+    <div data-anim="blur" style="display:flex;align-items:flex-end;justify-content:space-between;gap:30px;border-bottom:1px solid #E8D9C5;padding-bottom:30px;flex-wrap:wrap">
+      <h2 data-sec-title="" style="font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(2.4rem,5.5vw,4.6rem);line-height:1;color:#1C1008">Servicios</h2>
+      <span style="font-size:13px;font-weight:300;color:#7A6A5F;max-width:340px;line-height:1.6">Dermatología clínica y estética, tricología y cirugía dermatológica, guiadas por diagnóstico médico.</span>
+    </div>
+  </section>
+
+  <sc-for list="{{ treatments }}" as="t" hint-placeholder-count="5">
+    <section data-screen-label="{{ t.label }}" data-pad="" style="background:#FAF6F1;padding:11vh clamp(24px,6vw,90px);min-height:96vh;display:flex;align-items:center">
+      <div data-row="" style="display:grid;grid-template-columns:0.92fr 1.08fr;gap:clamp(40px,7vw,110px);align-items:center;width:100%;max-width:1500px;margin:0 auto">
+        <div data-textcol="" data-seq="" style="display:flex;flex-direction:column;align-items:flex-start;max-width:480px;order:{{ t.textOrder }}">
+          <div data-seq-item="" style="font-family:'Montserrat';font-weight:700;font-size:13px;letter-spacing:.18em;color:#C9A87C;margin-bottom:22px">{{ t.num }} — {{ t.kicker }}</div>
+          <h3 data-seq-item="" style="font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(2.6rem,5vw,4.4rem);line-height:1.02;color:#1C1008;letter-spacing:-.01em">{{ t.title }}</h3>
+          <p data-seq-item="" style="margin-top:24px;font-size:16px;font-weight:300;line-height:1.8;color:#666">{{ t.body }}</p>
+          <div data-seq-item="" style="margin-top:30px;display:flex;flex-direction:column;gap:12px;width:100%;max-width:360px">
+            <sc-for list="{{ t.points }}" as="p" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:12px;font-size:13.5px;font-weight:400;color:#8B4513;border-top:1px solid #E8D9C5;padding-top:12px">
+                <span style="width:5px;height:5px;border-radius:50%;background:#C4622D;flex:none"></span>{{ p }}
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div data-visual="" style="position:relative;width:100%;height:clamp(340px,46vw,560px);order:{{ t.visualOrder }}">
+          <sc-if value="{{ t.showSlot }}" hint-placeholder-val="{{ true }}">
+            <div style="position:absolute;inset:-8%;background:radial-gradient(circle at 50% 50%,rgba(201,168,124,.35),transparent 62%);filter:blur(34px);animation:glowPulse 6s ease-in-out infinite"></div>
+            <x-import component-from-global-scope="image-slot" from="./image-slot.js" id="{{ t.slot }}" shape="rounded" radius="6" placeholder="{{ t.ph }}" hint-size="100%,100%" style="position:relative;width:100%;height:100%;box-shadow:0 30px 80px -30px rgba(42,20,8,.45)">
+            </x-import>
+          </sc-if>
+          <sc-if value="{{ t.embed }}" hint-placeholder-val="{{ false }}">
+            <div data-embed-anim="" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+              <div style="position:relative;width:min(340px,100%);height:100%;overflow:hidden;border-radius:12px;box-shadow:0 12px 50px rgba(42,20,8,.35)">
+                <iframe src="{{ t.embed }}" style="position:absolute;top:-56px;left:0;width:100%;height:calc(100% + 200px);border:0;display:block" allowtransparency="true" allowfullscreen="true" scrolling="no" loading="lazy" title="{{ t.title }}"></iframe>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </section>
+  </sc-for>
+
+  <!-- TECNOLOGÍA (dark, Vaonis) -->
+  <section data-screen-label="Tecnología" data-darksec="" data-pad="" style="position:relative;padding:16vh clamp(24px,6vw,90px);min-height:118vh;display:flex;flex-direction:column;justify-content:center;overflow:hidden">
+    <!-- imagen de fondo -->
+    <div style="position:absolute;inset:0;background:url('./tecnologia-bg.jpg') center center / cover no-repeat;z-index:0"></div>
+    <!-- degradado oscuro para legibilidad -->
+    <div style="position:absolute;inset:0;background:linear-gradient(120deg,rgba(42,20,8,.92) 0%,rgba(42,20,8,.75) 55%,rgba(26,10,4,.88) 100%);z-index:1"></div>
+    <!-- glow dorado sutil -->
+    <div style="position:absolute;inset:0;background:radial-gradient(circle at 80% 20%,rgba(201,168,124,.12),transparent 50%);z-index:1"></div>
+    <div style="position:relative;z-index:2;display:grid;grid-template-columns:1fr 1fr;gap:clamp(48px,7vw,110px);align-items:center;width:100%;max-width:1500px;margin:0 auto 64px">
+      <!-- Columna izquierda: texto -->
+      <div data-anim="clip">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:26px">
+          <span style="width:46px;height:1px;background:#C9A87C"></span>
+          <span style="font-size:12px;font-weight:600;letter-spacing:.28em;text-transform:uppercase;color:#e8c99a">Tecnología destacada · Fotona</span>
+        </div>
+        <h2 data-sec-title="" style="font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(2.6rem,6vw,5.4rem);line-height:1.02;color:#fff">StarWalker <span style="font-style:italic;color:#e8c99a">MaQX Pro</span></h2>
+        <p style="margin-top:26px;max-width:580px;font-size:16px;font-weight:300;line-height:1.8;color:#d4c4b0">El láser de mayor rendimiento y precisión del mundo, y uno de los pocos equipos de esta categoría en Ecuador. Trata melasma, manchas, tatuajes, rejuvenecimiento, lesiones vasculares, acné y pigmentación con seguridad en todo tipo de piel.</p>
+      </div>
+      <!-- Columna derecha: reel solo video -->
+      <div style="display:flex;align-items:center;justify-content:center">
+        <div style="position:relative;width:min(320px,100%);overflow:hidden;border-radius:14px;box-shadow:0 12px 50px rgba(0,0,0,.5)">
+          <div style="height:520px;overflow:hidden;position:relative">
+            <iframe src="https://www.instagram.com/reel/DZNpkWvOmcu/embed/" style="position:absolute;top:-54px;left:0;width:100%;height:740px;border:0;display:block" allowtransparency="true" allowfullscreen="true" scrolling="no" loading="lazy" title="Reel Dermapiel &amp; Pelo"></iframe>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div data-techgrid="" style="position:relative;z-index:2;display:grid;grid-template-columns:repeat(3,1fr);gap:24px;max-width:1400px">
+      <sc-for list="{{ tech }}" as="c" hint-placeholder-count="3">
+        <div data-glass="" style="position:relative;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:34px 30px;backdrop-filter:blur(50px);overflow:hidden">
+          <div style="position:absolute;top:-40px;right:-40px;width:140px;height:140px;background:radial-gradient(circle,rgba(201,168,124,.5),transparent 70%);filter:blur(20px)"></div>
+          <div style="position:relative;font-family:'Montserrat';font-weight:200;font-size:clamp(2.6rem,4vw,3.6rem);color:#fff;line-height:1">{{ c.metric }}<span style="font-size:1.1rem;font-weight:500;color:#C9A87C">{{ c.unit }}</span></div>
+          <div style="position:relative;margin-top:18px;font-family:'Montserrat';font-weight:600;font-size:15px;color:#fff;letter-spacing:.02em">{{ c.name }}</div>
+          <p style="position:relative;margin-top:10px;font-size:13.5px;font-weight:300;line-height:1.65;color:#bfaa8e">{{ c.desc }}</p>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <!-- PROCESO: sticky scrollytelling -->
+  <section id="proceso" data-screen-label="Proceso" style="position:relative;height:500vh;background:#2A1408">
+    <div id="proceso-sticky" style="position:sticky;top:0;height:100vh;overflow:hidden;display:flex;align-items:center;justify-content:center">
+      <!-- fondo: imagen real -->
+      <div style="position:absolute;inset:0;background:url('./proceso-bg.png') center center / cover no-repeat"></div>
+      <!-- glow dorado sutil -->
+      <div style="position:absolute;inset:0;background:radial-gradient(circle at 70% 30%,rgba(201,168,124,.15),transparent 55%)"></div>
+      <!-- overlay degradado oscuro para legibilidad del texto -->
+      <div style="position:absolute;inset:0;background:linear-gradient(160deg,rgba(26,10,4,.78) 0%,rgba(42,20,8,.72) 50%,rgba(26,10,4,.86) 100%)"></div>
+
+      <!-- progreso -->
+      <div style="position:absolute;left:clamp(12px,2.4vw,38px);top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:14px;z-index:5">
+        <sc-for list="{{ proceso }}" as="p" hint-placeholder-count="4">
+          <div class="proceso-tick" data-i="{{ $index }}" style="width:2px;height:46px;background:rgba(255,255,255,.18);transition:background .5s"></div>
+        </sc-for>
+      </div>
+
+      <!-- bloques de texto apilados -->
+      <sc-for list="{{ proceso }}" as="p" hint-placeholder-count="4">
+        <div class="proceso-step" data-i="{{ $index }}" style="position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:clamp(40px,6vw,90px);opacity:0;padding:0 clamp(24px,8vw,120px);will-change:opacity">
+          <div class="proceso-col" style="display:flex;flex-direction:column;align-items:flex-start;text-align:left;max-width:560px">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:26px">
+              <span style="width:46px;height:1px;background:#C9A87C"></span>
+              <span style="font-family:'Montserrat';font-weight:600;font-size:12.5px;letter-spacing:.3em;text-transform:uppercase;color:#e8c99a">{{ p.step }} — {{ p.kicker }}</span>
+            </div>
+            <h2 data-sec-title="" style="font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(2.6rem,7vw,6.4rem);line-height:1.02;color:#fff;letter-spacing:-.01em;max-width:14ch">{{ p.title }}</h2>
+            <p style="margin-top:28px;max-width:520px;font-size:clamp(15px,1.5vw,18px);font-weight:300;line-height:1.8;color:#d4c4b0">{{ p.body }}</p>
+          </div>
+          <div class="proceso-col-img" aria-hidden="true"></div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <!-- STATS (dark overlay + counters) -->
+  <section data-screen-label="Stats" data-darksec="" data-pad="" style="position:relative;background:rgba(26,10,4,.92);padding:18vh clamp(24px,6vw,90px);min-height:100vh;display:flex;flex-direction:column;justify-content:center">
+    <h2 data-anim="blur" data-sec-title="" style="font-family:'Cormorant Garamond',serif;font-weight:300;font-size:clamp(2rem,4vw,3.4rem);line-height:1.2;color:#fff;max-width:780px;margin-bottom:8vh">Años de práctica médica, traducidos en confianza.</h2>
+    <div data-statgrid="" style="display:grid;grid-template-columns:repeat(4,1fr);gap:30px;max-width:1400px">
+      <sc-for list="{{ stats }}" as="s" hint-placeholder-count="4">
+        <div data-stat="" style="border-top:1px solid rgba(255,255,255,.18);padding-top:24px">
+          <div style="font-family:'Montserrat';font-weight:200;font-size:clamp(3rem,6vw,5.4rem);color:#fff;line-height:1;display:flex;align-items:baseline">
+            <span class="counter" data-target="{{ s.value }}" data-suffix="{{ s.suffix }}">0</span>
+          </div>
+          <div style="margin-top:16px;font-family:'Montserrat';font-weight:500;font-size:14px;color:#e8c99a;letter-spacing:.04em">{{ s.label }}</div>
+          <div style="margin-top:6px;font-size:13px;font-weight:300;color:#7A6A5F">{{ s.note }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <!-- TESTIMONIOS -->
+  <section data-screen-label="Testimonios" data-pad="" style="background:#FAF6F1;padding:16vh clamp(24px,6vw,90px);min-height:96vh;display:flex;flex-direction:column;justify-content:center;overflow:hidden">
+    <div data-anim="blur" style="display:flex;align-items:center;gap:14px;margin-bottom:46px">
+      <span style="width:46px;height:1px;background:#C4622D"></span>
+      <span style="font-size:12px;font-weight:600;letter-spacing:.28em;text-transform:uppercase;color:#8B4513">Pacientes en Quito</span>
+    </div>
+    <div id="testi-track" style="position:relative;min-height:300px">
+      <sc-for list="{{ testimonials }}" as="q" hint-placeholder-count="3">
+        <figure class="testi-slide" data-i="{{ $index }}" style="position:absolute;inset:0;opacity:0;transition:opacity .8s ease;max-width:980px">
+          <blockquote style="font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(1.8rem,4vw,3.4rem);line-height:1.22;color:#1C1008;letter-spacing:-.01em">“{{ q.text }}”</blockquote>
+          <figcaption style="margin-top:34px;display:flex;align-items:center;gap:16px">
+            <span style="width:38px;height:1px;background:#8B4513"></span>
+            <span style="font-family:'Montserrat';font-weight:600;font-size:14px;color:#1C1008">{{ q.name }}</span>
+            <span style="font-size:13px;font-weight:300;color:#7A6A5F">{{ q.meta }}</span>
+          </figcaption>
+        </figure>
+      </sc-for>
+    </div>
+    <div id="testi-dots" style="margin-top:40px;display:flex;gap:10px"></div>
+  </section>
+
+  <!-- CTA final section -->
+  <section data-screen-label="CTA" data-darksec="" data-pad="" style="position:relative;padding:22vh clamp(24px,6vw,90px);min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;overflow:hidden">
+    <div style="position:absolute;inset:0;background:url('./cta-bg.jpg') center center / cover no-repeat;z-index:0"></div>
+    <div style="position:absolute;inset:0;background:linear-gradient(110deg,rgba(42,20,8,.82) 0%,rgba(42,20,8,.52) 55%,rgba(26,10,4,.68) 100%);z-index:1"></div>
+    <div data-anim="scale" style="position:relative;z-index:2;max-width:900px;width:100%">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:28px">
+        <span style="width:46px;height:1px;background:#C9A87C"></span>
+        <span style="font-size:12px;font-weight:600;letter-spacing:.28em;text-transform:uppercase;color:#e8c99a">Agenda tu cita</span>
+      </div>
+      <h2 data-sec-title="" style="font-family:'Cormorant Garamond',serif;font-weight:400;font-size:clamp(3rem,8vw,7.5rem);line-height:.98;color:#fff;letter-spacing:-.01em">Cuidemos tu <span style="font-style:italic;color:#e8c99a">piel</span> juntas</h2>
+      <p style="margin-top:30px;max-width:520px;font-size:16px;font-weight:300;line-height:1.8;color:#d4c4b0">Una primera consulta con la Dra. Liliana García para entender tu piel, tu cabello y el camino más seguro hacia los resultados que buscas.</p>
+      <a href="https://wa.link/wl5k1r" target="_blank" rel="noopener" style="margin-top:42px;display:inline-flex;align-items:center;gap:14px;background:#25D366;color:#fff;font-family:'Montserrat';font-weight:700;font-size:15px;letter-spacing:.02em;padding:20px 40px;border-radius:60px;text-decoration:none;box-shadow:0 20px 60px -20px rgba(37,211,102,.7)">Agendar por WhatsApp<span style="font-size:18px">→</span></a>
+      <div style="margin-top:54px;display:flex;gap:56px;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,.14);padding-top:34px">
+        <div><div style="font-family:'Montserrat';font-weight:600;font-size:13px;letter-spacing:.04em;color:#e8c99a">Instagram</div><div style="margin-top:8px;font-size:15px;font-weight:300;color:#e7ece6">@dermapielquito</div></div>
+        <div><div style="font-family:'Montserrat';font-weight:600;font-size:13px;letter-spacing:.04em;color:#e8c99a">Ubicaciones</div><div style="margin-top:8px;font-size:15px;font-weight:300;color:#e7ece6">Sangolquí · Quito</div></div>
+        <div><div style="font-family:'Montserrat';font-weight:600;font-size:13px;letter-spacing:.04em;color:#e8c99a">Especialista</div><div style="margin-top:8px;font-size:15px;font-weight:300;color:#e7ece6">Dra. Liliana García</div></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Persistent CTA -->
+<a id="cta-persist" href="https://wa.link/wl5k1r" target="_blank" rel="noopener" data-cta-persist="" data-persist="true" style="position:fixed;bottom:28px;right:28px;z-index:50;display:flex;align-items:center;gap:10px;background:#C4622D;color:#fff;font-family:'Montserrat',sans-serif;font-weight:700;font-size:13.5px;letter-spacing:.02em;padding:15px 26px;border:none;border-radius:60px;cursor:pointer;text-decoration:none;opacity:0;transform:translateY(20px);box-shadow:0 16px 40px -14px rgba(196,98,45,.75)">Agendar por WhatsApp<span style="font-size:16px">→</span></a>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      treatments: [
+        { num:'01', kicker:'Láser CO2', label:'Láser CO2', title:'Láser CO2 fraccionado', slot:'t-co2', ph:'Foto: rejuvenecimiento láser', showSlot:false, embed:'https://www.instagram.com/reel/DZmmZPCseKi/embed/', textOrder:1, visualOrder:2,
+          body:'Rejuvenecimiento y resurfacing de la piel. Estimula colágeno, mejora textura, cicatrices y arrugas con precisión médica y recuperación controlada.',
+          points:['Resurfacing y textura','Cicatrices de acné','Estímulo de colágeno'] },
+        { num:'02', kicker:'Láser Pico', label:'Láser Pico', title:'Láser Pico', slot:'t-pico', ph:'Foto: manchas y tatuajes', showSlot:false, embed:'https://www.instagram.com/p/DZImC6hDw33/embed/', textOrder:2, visualOrder:1,
+          body:'Pulsos en picosegundos para eliminar manchas y tatuajes fragmentando el pigmento sin dañar la piel circundante. Resultados visibles y seguros.',
+          points:['Eliminación de tatuajes','Manchas y pigmentación','Mínimo daño cutáneo'] },
+        { num:'03', kicker:'Armonización', label:'Armonización', title:'Armonización facial full face', slot:'t-armonia', ph:'Foto: armonización facial', showSlot:false, embed:'https://www.instagram.com/reel/DYJCD0UsR_a/embed/', textOrder:1, visualOrder:2,
+          body:'Toxina botulínica, bioestimuladores de colágeno y un plan integral del rostro para realzar tus rasgos con naturalidad, respetando tu expresión.',
+          points:['Toxina botulínica (bótox)','Bioestimuladores de colágeno','Full face personalizado'] },
+        { num:'04', kicker:'Tricología', label:'Tricología', title:'Mesoterapia capilar', slot:'t-capilar', ph:'Foto: tratamiento capilar', showSlot:false, embed:'https://www.instagram.com/reel/DXvSTyMsyCo/embed/', textOrder:2, visualOrder:1,
+          body:'Tricología médica para la salud del cabello y el cuero cabelludo. Microinfiltraciones que nutren el folículo y frenan la caída desde la causa.',
+          points:['Diagnóstico tricológico','Control de la caída','Salud del cuero cabelludo'] },
+        { num:'05', kicker:'Acné', label:'Acné', title:'Tratamiento del acné', slot:'t-acne', ph:'Foto: tratamiento de acné', showSlot:false, embed:'https://www.instagram.com/reel/DWkPMHcj2Sb/embed/', textOrder:1, visualOrder:2,
+          body:'Diagnóstico de la causa y un plan combinado para niños, adolescentes y adultos: reducir brotes, controlar la inflamación y prevenir marcas.',
+          points:['Para toda la familia','Control de la inflamación','Prevención de cicatrices'] },
+      ],
+      proceso: [
+        { step:'01', kicker:'Diagnóstico', title:'Escuchamos tu caso', body:'Antes de tratar, evaluamos. Una valoración médica completa de tu piel, cabello o uñas para entender la causa real, no solo el síntoma.' },
+        { step:'02', kicker:'Protocolo', title:'Diseñamos tu plan', body:'Cada paciente es único. Construimos un protocolo personalizado, con objetivos claros y la tecnología adecuada para tu caso.' },
+        { step:'03', kicker:'Tratamiento', title:'Aplicamos la tecnología precisa', body:'Equipos de última generación como el StarWalker MaQX Pro, operados por la especialista. Precisión que cuida y minimiza la recuperación.' },
+        { step:'04', kicker:'Seguimiento', title:'Acompañamos tu evolución', body:'Comparamos, ajustamos y acompañamos. Tratamos la causa raíz para que los resultados se mantengan en el tiempo.' },
+      ],
+      tech: [
+        { metric:'#1', unit:'', name:'Mayor precisión del mundo', desc:'StarWalker MaQX Pro de Fotona: el láser de mayor rendimiento y precisión de su categoría.' },
+        { metric:'7', unit:'+', name:'Condiciones que trata', desc:'Melasma, manchas, tatuajes, rejuvenecimiento, lesiones vasculares, acné y pigmentación.' },
+        { metric:'1', unit:' de pocos', name:'Equipos en Ecuador', desc:'Uno de los pocos equipos de esta categoría disponibles en el país.' },
+      ],
+      stats: [
+        { value:18, suffix:'+', label:'Años de experiencia', note:'práctica dermatológica continua' },
+        { value:12000, suffix:'+', label:'Pacientes atendidos', note:'piel, cabello y uñas' },
+        { value:98, suffix:'%', label:'Satisfacción', note:'recomendarían la clínica' },
+        { value:9, suffix:'', label:'Servicios especializados', note:'dermatología y tricología' },
+      ],
+      testimonials: [
+        { text:'Por fin un diagnóstico que va a la causa. La Dra. Liliana explicó todo con claridad y mi piel cambió por completo.', name:'Andrea M.', meta:'Tratamiento de manchas' },
+        { text:'Llevé a mi hijo adolescente por su acné. Trato cercano, profesional y resultados reales.', name:'Carolina V.', meta:'Tratamiento de acné' },
+        { text:'La mesoterapia capilar frenó mi caída de cabello. Tecnología de primera y un equipo que escucha.', name:'Daniela P.', meta:'Tricología capilar' },
+      ],
+    };
+  }
+
+  componentDidMount() {
+    this._raf = null; this._t = 0;
+    this._waitLibs(() => this._init());
+  }
+  componentWillUnmount() {
+    if (this._raf) cancelAnimationFrame(this._raf);
+    if (window.ScrollTrigger) ScrollTrigger.getAll().forEach(s => s.kill());
+    if (this._lenis) this._lenis.destroy();
+    if (this._testiTimer) clearInterval(this._testiTimer);
+  }
+
+  _waitLibs(cb, n = 0) {
+    if (window.gsap && window.ScrollTrigger && window.Lenis) return cb();
+    if (n > 120) return cb();
+    setTimeout(() => this._waitLibs(cb, n + 1), 50);
+  }
+
+  _root() { return this._el || (this._el = document.querySelector('#content')?.closest('x-dc') || document); }
+
+  _init() {
+    const root = this._root();
+    this._initCanvas();
+    if (window.gsap && window.ScrollTrigger) {
+      gsap.registerPlugin(ScrollTrigger);
+      this._initLenis();
+      this._initReveals(root);
+      this._initHero();
+      this._initCounters(root);
+      this._initCTA();
+    }
+    this._initTestimonials(root);
+    this._initNavProgress(root);
+    this._initScrollytelling(root);
+  }
+
+  /* ---------- Sticky scroll storytelling (vanilla) ---------- */
+  _initScrollytelling(root) {
+    const section = root.querySelector('#proceso');
+    if (!section) return;
+    const steps = [...section.querySelectorAll('.proceso-step')];
+    const ticks = [...section.querySelectorAll('.proceso-tick')];
+    const n = steps.length;
+    if (!n) return;
+
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) {
+      // mostrar contenido apilado normalmente, sin efecto sticky
+      section.style.height = 'auto';
+      const sticky = section.querySelector('#proceso-sticky');
+      if (sticky) { sticky.style.position = 'relative'; sticky.style.height = 'auto'; sticky.style.flexDirection = 'column'; }
+      steps.forEach(s => {
+        s.style.position = 'relative'; s.style.opacity = '1';
+        s.style.paddingTop = '14vh'; s.style.paddingBottom = '14vh';
+      });
+      return;
+    }
+
+    // fade-in al entrar al tramo, fade-out al salir; solo un texto a la vez
+    const render = () => {
+      const rect = section.getBoundingClientRect();
+      const total = rect.height - innerHeight;
+      let prog = total > 0 ? (-rect.top) / total : 0;
+      prog = Math.min(1, Math.max(0, prog));
+      const seg = 1 / n;
+      steps.forEach((el, i) => {
+        const start = i * seg;
+        const local = (prog - start) / seg; // 0..1 dentro del tramo
+        let op = 0;
+        if (local >= 0 && local <= 1) {
+          // rampa de entrada/salida suave dentro del tramo
+          op = Math.sin(Math.min(1, Math.max(0, local)) * Math.PI);
+          op = Math.min(1, op * 1.25);
+        }
+        el.style.opacity = op.toFixed(3);
+        if (ticks[i]) ticks[i].style.background = op > 0.5 ? '#C9A87C' : 'rgba(255,255,255,.18)';
+      });
+    };
+
+    // scroll con throttling por requestAnimationFrame
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => { render(); ticking = false; });
+    };
+    if (this._lenis) this._lenis.on('scroll', onScroll);
+    addEventListener('scroll', onScroll, { passive: true });
+    addEventListener('resize', onScroll);
+    render();
+  }
+
+  /* ---------- Header progress bar + active nav (estilo Vaonis) ---------- */
+  _initNavProgress(root) {
+    const nav = document.getElementById('topnav');
+    const track = document.getElementById('nav-progress');
+    const bar = document.getElementById('nav-progress-bar');
+    const items = [...root.querySelectorAll('.nav-item')];
+    if (!bar || !track) return;
+
+    // posiciona la barra justo en el borde inferior del header
+    const placeBar = () => {
+      const h = nav ? nav.getBoundingClientRect().height : 78;
+      track.style.top = Math.round(h - 2) + 'px';
+    };
+    placeBar(); addEventListener('resize', placeBar);
+
+    // mapa de secciones objetivo
+    const sectionFor = label => root.querySelector('[data-screen-label="' + label + '"]');
+
+    // progreso de scroll -> scaleX (se llena al bajar, se vacía al subir)
+    const update = () => {
+      const doc = document.documentElement;
+      const max = (doc.scrollHeight - innerHeight) || 1;
+      const p = Math.min(1, Math.max(0, (window.scrollY || doc.scrollTop) / max));
+      bar.style.transform = 'scaleX(' + p + ')';
+      // sección activa
+      const mid = (window.scrollY || doc.scrollTop) + innerHeight * 0.4;
+      let active = null;
+      ['Filosofía', 'Tratamientos', 'Tecnología'].forEach(lbl => {
+        const s = sectionFor(lbl);
+        if (s) {
+          const top = s.offsetTop;
+          if (mid >= top) active = lbl;
+        }
+      });
+      items.forEach(it => {
+        const on = it.getAttribute('data-nav-target') === active;
+        it.style.opacity = on ? '1' : '0.6';
+        it.style.borderBottomColor = on ? 'currentColor' : 'transparent';
+      });
+    };
+
+    if (this._lenis) this._lenis.on('scroll', update);
+    addEventListener('scroll', update, { passive: true });
+    update();
+
+    // click en nav -> scroll suave a la sección
+    [...root.querySelectorAll('[data-nav-target]')].forEach(el => {
+      el.addEventListener('click', () => {
+        const lbl = el.getAttribute('data-nav-target');
+        if (lbl === 'Hero') {
+          this._lenis ? this._lenis.scrollTo(0) : scrollTo({ top: 0, behavior: 'smooth' });
+          return;
+        }
+        const target = sectionFor(lbl);
+        if (!target) return;
+        const y = target.offsetTop;
+        this._lenis ? this._lenis.scrollTo(y) : scrollTo({ top: y, behavior: 'smooth' });
+      });
+    });
+  }
+
+  /* ---------- LENIS smooth scroll ---------- */
+  _initLenis() {
+    const lenis = new Lenis({ duration: 1.15, easing: t => Math.min(1, 1.001 - Math.pow(2, -10 * t)), smoothWheel: true });
+    this._lenis = lenis;
+    lenis.on('scroll', ScrollTrigger.update);
+    gsap.ticker.add(time => lenis.raf(time * 1000));
+    gsap.ticker.lagSmoothing(0);
+  }
+
+  /* ---------- Canvas: drifting cell / science field ---------- */
+  _initCanvas() {
+    const c = document.getElementById('bg-canvas'); if (!c) return;
+    const ctx = c.getContext('2d');
+    let w, h, dpr, cells;
+    const isMobile = () => window.innerWidth < 768;
+    const resize = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = c.width = innerWidth * dpr; h = c.height = innerHeight * dpr;
+      c.style.width = innerWidth + 'px'; c.style.height = innerHeight + 'px';
+      const count = isMobile() ? 26 : 52;
+      cells = Array.from({ length: count }, () => {
+        const cyan = Math.random() < 0.16;
+        return {
+          x: Math.random() * w, y: Math.random() * h,
+          r: (Math.random() * 120 + 50) * dpr,
+          vx: (Math.random() - 0.5) * 0.18 * dpr, vy: (Math.random() - 0.5) * 0.18 * dpr,
+          col: cyan ? [201, 168, 124] : (Math.random() < 0.5 ? [196, 98, 45] : [92, 45, 26]),
+          a: cyan ? 0.20 : 0.13, ph: Math.random() * 6.28,
+        };
+      });
+    };
+    resize(); addEventListener('resize', resize);
+    const draw = () => {
+      this._t += 0.006;
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, '#2A1408'); g.addColorStop(1, '#1A0A04');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      ctx.globalCompositeOperation = 'lighter';
+      for (const o of cells) {
+        o.x += o.vx; o.y += o.vy;
+        if (o.x < -o.r) o.x = w + o.r; if (o.x > w + o.r) o.x = -o.r;
+        if (o.y < -o.r) o.y = h + o.r; if (o.y > h + o.r) o.y = -o.r;
+        const pulse = 0.65 + 0.35 * Math.sin(this._t * 1.3 + o.ph);
+        const rad = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r);
+        rad.addColorStop(0, `rgba(${o.col[0]},${o.col[1]},${o.col[2]},${o.a * pulse})`);
+        rad.addColorStop(0.5, `rgba(${o.col[0]},${o.col[1]},${o.col[2]},${o.a * pulse * 0.3})`);
+        rad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = rad;
+        ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, 6.2832); ctx.fill();
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      this._raf = requestAnimationFrame(draw);
+    };
+    draw();
+  }
+
+  /* ---------- Scroll reveals (varied per section) ---------- */
+  _initReveals(root) {
+    const fromFor = type => {
+      const b = { opacity: 0, y: 64 };
+      if (type === 'scale') return { ...b, scale: 0.9 };
+      if (type === 'blur') return { ...b, y: 52, filter: 'blur(16px)' };
+      if (type === 'rotate') return { ...b, rotationX: -32, transformOrigin: '50% 100%' };
+      if (type === 'clip') return { ...b, y: 50, clipPath: 'inset(100% 0 0 0)' };
+      return b;
+    };
+    root.querySelectorAll('[data-anim]').forEach(el => {
+      const type = el.getAttribute('data-anim');
+      gsap.fromTo(el, fromFor(type), {
+        opacity: 1, y: 0, scale: 1, rotationX: 0, filter: 'blur(0px)', clipPath: 'inset(0% 0 0 0)',
+        duration: 1.15, ease: 'power3.out',
+        scrollTrigger: { trigger: el, start: 'top 84%' },
+      });
+    });
+    // sequenced groups: label -> title -> body -> cta
+    root.querySelectorAll('[data-seq]').forEach(seq => {
+      const kids = seq.querySelectorAll('[data-seq-item]');
+      gsap.fromTo(kids, { opacity: 0, y: 52 }, {
+        opacity: 1, y: 0, duration: 0.95, ease: 'power3.out', stagger: 0.16,
+        scrollTrigger: { trigger: seq, start: 'top 80%' },
+      });
+    });
+    // glass tech cards: scale-up stagger
+    const glass = root.querySelectorAll('[data-glass]');
+    if (glass.length) gsap.fromTo(glass, { opacity: 0, y: 60, scale: 0.92 }, {
+      opacity: 1, y: 0, scale: 1, duration: 1, ease: 'power3.out', stagger: 0.14,
+      scrollTrigger: { trigger: glass[0], start: 'top 82%' },
+    });
+    // stat blocks fade-up stagger
+    const stats = root.querySelectorAll('[data-stat]');
+    if (stats.length) gsap.fromTo(stats, { opacity: 0, y: 50 }, {
+      opacity: 1, y: 0, duration: 0.9, ease: 'power3.out', stagger: 0.12,
+      scrollTrigger: { trigger: stats[0], start: 'top 82%' },
+    });
+    // animación de entrada para iframes embed (scale + fade + blur desde abajo)
+    root.querySelectorAll('[data-embed-anim]').forEach(el => {
+      gsap.fromTo(el,
+        { opacity: 0, y: 80, scale: 0.88, filter: 'blur(12px)' },
+        { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)',
+          duration: 1.2, ease: 'power3.out',
+          scrollTrigger: { trigger: el, start: 'top 85%' } }
+      );
+    });
+    // parallax sutil en las imágenes de tratamientos (sensación Vaonis)
+    root.querySelectorAll('[data-visual]').forEach(v => {
+      gsap.fromTo(v, { y: 60 }, {
+        y: -60, ease: 'none',
+        scrollTrigger: { trigger: v, start: 'top bottom', end: 'bottom top', scrub: true },
+      });
+    });
+  }
+
+  /* ---------- Hero overlay + image fade on scroll ---------- */
+  _initHero() {
+    const heroSec = document.querySelector('[data-screen-label="Hero"]') || document.getElementById('content');
+    const filosSec = document.querySelector('[data-screen-label="Filosofía"]');
+
+    // text overlay: drift up and fade
+    const overlay = document.getElementById('hero-overlay');
+    if (overlay) {
+      gsap.to(overlay, {
+        opacity: 0, y: -80, ease: 'none',
+        scrollTrigger: { trigger: heroSec, start: 'top top', end: 'bottom 30%', scrub: true },
+      });
+    }
+
+    // hero image + warm overlay: fade out as Filosofía enters
+    const heroImg = document.getElementById('hero-img');
+    const heroImgOv = document.getElementById('hero-img-overlay');
+    if (heroImg && filosSec) {
+      gsap.to([heroImg, heroImgOv], {
+        opacity: 0, ease: 'none',
+        scrollTrigger: { trigger: filosSec, start: 'top bottom', end: 'top top', scrub: true },
+      });
+    }
+
+    // canvas: fade in as hero image fades out (warm ambient for dark sections)
+    const canvas = document.getElementById('bg-canvas');
+    if (canvas && filosSec) {
+      gsap.fromTo(canvas, { opacity: 0.1 }, { opacity: 0.42, ease: 'none',
+        scrollTrigger: { trigger: filosSec, start: 'top bottom', end: 'top top', scrub: true } });
+    }
+  }
+
+  /* ---------- Counters from 0 ---------- */
+  _initCounters(root) {
+    root.querySelectorAll('.counter').forEach(el => {
+      const target = parseFloat(el.getAttribute('data-target')) || 0;
+      const suffix = el.getAttribute('data-suffix') || '';
+      const fmt = v => {
+        const n = Math.round(v);
+        return (n >= 1000 ? n.toLocaleString('es-ES') : n) + suffix;
+      };
+      const proxy = { v: 0 };
+      gsap.fromTo(proxy, { v: 0 }, {
+        v: target, duration: 2.1, ease: 'power2.out',
+        scrollTrigger: { trigger: el, start: 'top 86%' },
+        onUpdate: () => { el.textContent = fmt(proxy.v); },
+      });
+    });
+  }
+
+  /* ---------- Persistent CTA reveal ---------- */
+  _initCTA() {
+    const cta = document.getElementById('cta-persist');
+    if (!cta) return;
+    gsap.to(cta, {
+      opacity: 1, y: 0, duration: 0.6, ease: 'power3.out',
+      scrollTrigger: { trigger: document.querySelector('[data-screen-label="Filosofía"]'), start: 'top 60%', toggleActions: 'play none none reverse' },
+    });
+  }
+
+  /* ---------- Testimonials carousel ---------- */
+  _initTestimonials(root) {
+    const slides = [...root.querySelectorAll('.testi-slide')];
+    const dotsWrap = document.getElementById('testi-dots');
+    if (!slides.length) return;
+    let i = 0;
+    const dots = slides.map((_, k) => {
+      const d = document.createElement('button');
+      d.style.cssText = 'width:30px;height:3px;border:none;border-radius:2px;background:#E8D9C5;cursor:pointer;padding:0;transition:background .3s';
+      d.addEventListener('click', () => { i = k; render(); restart(); });
+      dotsWrap && dotsWrap.appendChild(d); return d;
+    });
+    const render = () => {
+      slides.forEach((s, k) => { s.style.opacity = k === i ? '1' : '0'; s.style.pointerEvents = k === i ? 'auto' : 'none'; });
+      dots.forEach((d, k) => { d.style.background = k === i ? '#C4622D' : '#E8D9C5'; });
+    };
+    const restart = () => { clearInterval(this._testiTimer); this._testiTimer = setInterval(() => { i = (i + 1) % slides.length; render(); }, 5200); };
+    render(); restart();
+  }
+}
+</script>
+</body>
+</html>
