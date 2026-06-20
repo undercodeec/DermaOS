@@ -4,8 +4,8 @@ import { Modal } from "@/components/Modal";
 import { Btn, Field } from "@/components/Primitives";
 import { Icon } from "@/components/icons";
 import { fullName } from "@/lib/helpers";
-import { createReceta, listProfessionals } from "../api";
-import type { Patient, RxItem } from "@/lib/types";
+import { createReceta, listProfessionals, updateReceta } from "../api";
+import type { ClinicalRecord, Patient, RxItem } from "@/lib/types";
 
 const RX_TEMPLATES: { id: string; name: string; items: RxItem[] }[] = [
   {
@@ -44,12 +44,22 @@ function emptyItem(): RxItem {
   return { ingredients: [{ name: "", concentration: "" }], vehicle: "", quantity: "", instructions: "" };
 }
 
-export function NewRecetaModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
+export function NewRecetaModal({
+  patient,
+  onClose,
+  edit,
+}: {
+  patient: Patient;
+  onClose: () => void;
+  edit?: ClinicalRecord;
+}) {
   const qc = useQueryClient();
   const { data: profs = [] } = useQuery({ queryKey: ["professionals"], queryFn: listProfessionals });
-  const [professionalId, setProfessionalId] = useState("");
-  const [templateId, setTemplateId] = useState("");
-  const [items, setItems] = useState<RxItem[]>([emptyItem()]);
+  const [professionalId, setProfessionalId] = useState(edit?.professionalId ?? "");
+  const [templateId, setTemplateId] = useState(edit?.prescription?.templateId ?? "");
+  const [items, setItems] = useState<RxItem[]>(
+    edit?.prescription?.items?.length ? JSON.parse(JSON.stringify(edit.prescription.items)) : [emptyItem()],
+  );
 
   useEffect(() => {
     if (!professionalId && profs.length > 0) setProfessionalId(profs[0].id);
@@ -72,12 +82,17 @@ export function NewRecetaModal({ patient, onClose }: { patient: Patient; onClose
     professionalId && items.some((it) => it.ingredients.some((g) => g.name.trim()) && it.instructions.trim());
 
   const m = useMutation({
-    mutationFn: () =>
-      createReceta(patient.id, {
+    mutationFn: () => {
+      const cleanItems = items.filter((it) => it.ingredients.some((g) => g.name.trim()));
+      if (edit) {
+        return updateReceta(patient.id, edit.id, { professionalId, items: cleanItems });
+      }
+      return createReceta(patient.id, {
         professionalId,
         templateId: templateId || undefined,
-        items: items.filter((it) => it.ingredients.some((g) => g.name.trim())),
-      }),
+        items: cleanItems,
+      });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["recetas", patient.id] });
       qc.invalidateQueries({ queryKey: ["patient-counts", patient.id] });
@@ -88,13 +103,13 @@ export function NewRecetaModal({ patient, onClose }: { patient: Patient; onClose
   return (
     <Modal
       wide
-      title={`Nueva receta · ${fullName(patient)}`}
+      title={`${edit ? "Editar" : "Nueva"} receta · ${fullName(patient)}`}
       onClose={onClose}
       foot={
         <>
           <Btn onClick={onClose}>Cancelar</Btn>
           <Btn kind="primary" icon="check" disabled={!valid || m.isPending} onClick={() => m.mutate()}>
-            {m.isPending ? "Guardando…" : "Guardar receta"}
+            {m.isPending ? "Guardando…" : edit ? "Guardar cambios" : "Guardar receta"}
           </Btn>
         </>
       }
@@ -109,16 +124,18 @@ export function NewRecetaModal({ patient, onClose }: { patient: Patient; onClose
             ))}
           </select>
         </Field>
-        <Field label="Desde plantilla">
-          <select value={templateId} onChange={(e) => pickTemplate(e.target.value)}>
-            <option value="">— Receta en blanco —</option>
-            {RX_TEMPLATES.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </Field>
+        {!edit ? (
+          <Field label="Desde plantilla">
+            <select value={templateId} onChange={(e) => pickTemplate(e.target.value)}>
+              <option value="">— Receta en blanco —</option>
+              {RX_TEMPLATES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : null}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>

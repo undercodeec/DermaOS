@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Btn, EmptyState } from "@/components/Primitives";
 import { fmtDate } from "@/lib/helpers";
@@ -7,15 +7,30 @@ import { roleCanWrite } from "@/lib/permissions";
 import type { ClinicalRecord } from "@/lib/types";
 import type { TabProps } from "./TabProps";
 import { NewRecetaModal } from "../modals/NewRecetaModal";
+import { deleteReceta } from "../api";
 
 export function TabRecetas({ patient, role }: TabProps) {
+  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [edit, setEdit] = useState<ClinicalRecord | null>(null);
   const canWrite = roleCanWrite(role, "historia");
 
   const { data: rx = [], isLoading } = useQuery({
     queryKey: ["recetas", patient.id],
     queryFn: () => api.get<ClinicalRecord[]>(`/patients/${patient.id}/recetas`),
   });
+
+  const del = useMutation({
+    mutationFn: (rid: string) => deleteReceta(patient.id, rid),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["recetas", patient.id] });
+      qc.invalidateQueries({ queryKey: ["patient-counts", patient.id] });
+    },
+  });
+
+  const onDelete = (r: ClinicalRecord) => {
+    if (window.confirm(`¿Eliminar esta receta del ${fmtDate(r.date)}?`)) del.mutate(r.id);
+  };
 
   return (
     <div>
@@ -66,10 +81,20 @@ export function TabRecetas({ patient, role }: TabProps) {
                   <div className="rx-instr">{it.instructions}</div>
                 </div>
               ))}
-              <div style={{ marginTop: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
                 <span className="muted" style={{ fontSize: 12.5 }}>
                   {r.professional?.name ?? ""}
                 </span>
+                {canWrite ? (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <Btn sm kind="ghost" icon="pen" onClick={() => setEdit(r)}>
+                      Editar
+                    </Btn>
+                    <Btn sm kind="ghost" icon="trash" onClick={() => onDelete(r)} disabled={del.isPending}>
+                      Eliminar
+                    </Btn>
+                  </div>
+                ) : null}
               </div>
             </div>
           ))}
@@ -77,6 +102,7 @@ export function TabRecetas({ patient, role }: TabProps) {
       )}
 
       {open ? <NewRecetaModal patient={patient} onClose={() => setOpen(false)} /> : null}
+      {edit ? <NewRecetaModal patient={patient} edit={edit} onClose={() => setEdit(null)} /> : null}
     </div>
   );
 }

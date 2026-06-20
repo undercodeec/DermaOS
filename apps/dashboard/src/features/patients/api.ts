@@ -76,6 +76,12 @@ export interface NewEvolucionInput {
 export function createEvolucion(patientId: string, input: NewEvolucionInput): Promise<ClinicalRecord> {
   return api.post<ClinicalRecord>(`/patients/${patientId}/evolucion`, input);
 }
+export function updateEvolucion(patientId: string, rid: string, input: Partial<NewEvolucionInput>): Promise<ClinicalRecord> {
+  return api.patch<ClinicalRecord>(`/patients/${patientId}/evolucion/${rid}`, input);
+}
+export function deleteEvolucion(patientId: string, rid: string): Promise<null> {
+  return api.del<null>(`/patients/${patientId}/evolucion/${rid}`);
+}
 
 // ----- Recetas -----
 export interface NewRecetaInput {
@@ -85,6 +91,12 @@ export interface NewRecetaInput {
 }
 export function createReceta(patientId: string, input: NewRecetaInput): Promise<ClinicalRecord> {
   return api.post<ClinicalRecord>(`/patients/${patientId}/recetas`, input);
+}
+export function updateReceta(patientId: string, rid: string, input: Partial<NewRecetaInput>): Promise<ClinicalRecord> {
+  return api.patch<ClinicalRecord>(`/patients/${patientId}/recetas/${rid}`, input);
+}
+export function deleteReceta(patientId: string, rid: string): Promise<null> {
+  return api.del<null>(`/patients/${patientId}/recetas/${rid}`);
 }
 
 // ----- Consents -----

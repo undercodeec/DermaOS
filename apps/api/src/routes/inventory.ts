@@ -48,6 +48,55 @@ router.post("/", requireModule("inventario", "write"), async (req, res, next) =>
   }
 });
 
+const editItemSchema = z.object({
+  name: z.string().min(1).optional(),
+  type: z.enum(["vial", "principio_activo", "insumo", "farmaco"]).optional(),
+  unit: z.string().min(1).optional(),
+  minStock: z.number().nonnegative().optional(),
+  lotNumber: z.string().nullable().optional(),
+  expiryDate: z.string().nullable().optional(),
+});
+
+router.patch("/:id", requireModule("inventario", "write"), async (req, res, next) => {
+  try {
+    const cur = await prisma.inventoryItem.findUnique({ where: { id: req.params.id } });
+    if (!cur) throw notFound("Ítem no encontrado");
+    const b = editItemSchema.parse(req.body);
+    const item = await prisma.inventoryItem.update({
+      where: { id: cur.id },
+      data: {
+        name: b.name ?? cur.name,
+        type: b.type ?? cur.type,
+        unit: b.unit ?? cur.unit,
+        minStock: b.minStock ?? cur.minStock,
+        lotNumber: b.lotNumber !== undefined ? (b.lotNumber ?? null) : cur.lotNumber,
+        expiryDate:
+          b.expiryDate !== undefined
+            ? b.expiryDate
+              ? new Date(b.expiryDate)
+              : null
+            : cur.expiryDate,
+      },
+    });
+    await audit(req, "Actualizó ítem de inventario", "sistema", item.name);
+    res.json(item);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/:id", requireModule("inventario", "write"), async (req, res, next) => {
+  try {
+    const cur = await prisma.inventoryItem.findUnique({ where: { id: req.params.id } });
+    if (!cur) throw notFound("Ítem no encontrado");
+    await prisma.inventoryItem.delete({ where: { id: cur.id } });
+    await audit(req, "Eliminó ítem de inventario", "sistema", cur.name);
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+});
+
 // Ajuste de stock (puede ser positivo o negativo)
 const adjustSchema = z.object({ delta: z.number() });
 

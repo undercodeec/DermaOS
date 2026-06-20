@@ -97,6 +97,7 @@ model User {
   passwordHash   String    @map("password_hash")
   role           Role
   mfaEnabled     Boolean   @default(false) @map("mfa_enabled")
+  mfaSecret      String?   @map("mfa_secret")
   active         Boolean   @default(true)
   professionalId String?   @map("professional_id") @db.Uuid
   professional   Professional? @relation(fields: [professionalId], references: [id], onDelete: SetNull)

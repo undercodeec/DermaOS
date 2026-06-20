@@ -85,6 +85,18 @@ router.patch("/users/:id", async (req, res, next) => {
   }
 });
 
+router.post("/users/:id/mfa/reset", async (req, res, next) => {
+  try {
+    const cur = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!cur) throw notFound("Usuario no encontrado");
+    await prisma.user.update({ where: { id: cur.id }, data: { mfaSecret: null } });
+    await audit(req, "Reseteó MFA de usuario", "sistema", cur.fullName);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get("/audit-logs", async (req, res, next) => {
   try {
     const { cat, from, to, take } = req.query as Record<string, string>;

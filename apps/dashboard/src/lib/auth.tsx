@@ -2,10 +2,26 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { api, getToken, setToken, clearToken, ApiError } from "./api";
 import type { Profile } from "./types";
 
+export type LoginOutcome =
+  | { ok: true }
+  | { ok: false; error: string }
+  | { ok: false; mfaRequired: true }
+  | { ok: false; mfaSetup: true; secret: string; otpauthUrl: string };
+
+interface LoginResponse {
+  token?: string;
+  profile?: Profile;
+  mfaRequired?: boolean;
+  mfaSetup?: boolean;
+  secret?: string;
+  otpauthUrl?: string;
+}
+
 interface AuthState {
   profile: Profile | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signIn: (email: string, password: string, totpCode?: string) => Promise<LoginOutcome>;
+  verifyMfaSetup: (email: string, password: string, totpCode: string) => Promise<LoginOutcome>;
   signOut: () => Promise<void>;
 }
 
@@ -37,17 +53,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string, totpCode?: string): Promise<LoginOutcome> => {
     try {
-      const r = await api.post<{ token: string; profile: Profile }>("/auth/login", {
-        email,
-        password,
-      });
-      setToken(r.token);
-      setProfile(r.profile);
-      return { error: null };
+      const body: Record<string, string> = { email, password };
+      if (totpCode) body.totpCode = totpCode;
+      const r = await api.post<LoginResponse>("/auth/login", body);
+      if (r.mfaSetup && r.secret && r.otpauthUrl) {
+        return { ok: false, mfaSetup: true, secret: r.secret, otpauthUrl: r.otpauthUrl };
+      }
+      if (r.mfaRequired) return { ok: false, mfaRequired: true };
+      if (r.token && r.profile) {
+        setToken(r.token);
+        setProfile(r.profile);
+        return { ok: true };
+      }
+      return { ok: false, error: "Respuesta inesperada del servidor" };
     } catch (e) {
-      return { error: e instanceof ApiError ? e.message : "Error de red" };
+      return { ok: false, error: e instanceof ApiError ? e.message : "Error de red" };
+    }
+  };
+
+  const verifyMfaSetup = async (email: string, password: string, totpCode: string): Promise<LoginOutcome> => {
+    try {
+      const r = await api.post<LoginResponse>("/auth/mfa/verify-setup", { email, password, totpCode });
+      if (r.token && r.profile) {
+        setToken(r.token);
+        setProfile(r.profile);
+        return { ok: true };
+      }
+      return { ok: false, error: "Respuesta inesperada" };
+    } catch (e) {
+      return { ok: false, error: e instanceof ApiError ? e.message : "Error de red" };
     }
   };
 
@@ -62,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ profile, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ profile, loading, signIn, verifyMfaSetup, signOut }}>
       {children}
     </AuthContext.Provider>
   );

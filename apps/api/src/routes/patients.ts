@@ -155,6 +155,45 @@ router.post("/:id/evolucion", requireModule("historia", "write"), async (req, re
   }
 });
 
+const updEvolucionSchema = newEvolucionSchema.partial();
+router.patch("/:id/evolucion/:rid", requireModule("historia", "write"), async (req, res, next) => {
+  try {
+    const cur = await prisma.clinicalRecord.findUnique({ where: { id: req.params.rid } });
+    if (!cur || cur.patientId !== req.params.id || cur.type !== "evolucion") throw notFound("Evolución no encontrada");
+    const body = updEvolucionSchema.parse(req.body);
+    const r = await prisma.clinicalRecord.update({
+      where: { id: cur.id },
+      data: {
+        ...(body.professionalId ? { professionalId: body.professionalId } : {}),
+        ...(body.subjective !== undefined ? { subjective: body.subjective } : {}),
+        ...(body.objective !== undefined ? { objective: body.objective } : {}),
+        ...(body.assessment !== undefined ? { assessment: body.assessment } : {}),
+        ...(body.plan !== undefined ? { plan: body.plan } : {}),
+        ...(body.cie10Codes ? { cie10Codes: body.cie10Codes } : {}),
+      },
+      include: { professional: { select: { id: true, name: true } } },
+    });
+    const pat = await prisma.patient.findUnique({ where: { id: cur.patientId } });
+    await audit(req, "Editó evolución", "historia", pat ? `${pat.firstName} ${pat.lastName}` : "");
+    res.json(r);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/:id/evolucion/:rid", requireModule("historia", "write"), async (req, res, next) => {
+  try {
+    const cur = await prisma.clinicalRecord.findUnique({ where: { id: req.params.rid } });
+    if (!cur || cur.patientId !== req.params.id || cur.type !== "evolucion") throw notFound("Evolución no encontrada");
+    await prisma.clinicalRecord.delete({ where: { id: cur.id } });
+    const pat = await prisma.patient.findUnique({ where: { id: cur.patientId } });
+    await audit(req, "Eliminó evolución", "historia", pat ? `${pat.firstName} ${pat.lastName}` : "");
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+});
+
 // ----- Recetas -----
 router.get("/:id/recetas", async (req, res, next) => {
   try {
@@ -197,6 +236,45 @@ router.post("/:id/recetas", requireModule("historia", "write"), async (req, res,
     });
     await audit(req, "Emitió receta", "historia", `${pat.firstName} ${pat.lastName}`);
     res.status(201).json(r);
+  } catch (e) {
+    next(e);
+  }
+});
+
+const updRecetaSchema = z.object({
+  professionalId: z.string().uuid().optional(),
+  items: z.array(rxItemSchema).min(1).optional(),
+});
+router.patch("/:id/recetas/:rid", requireModule("historia", "write"), async (req, res, next) => {
+  try {
+    const cur = await prisma.clinicalRecord.findUnique({ where: { id: req.params.rid } });
+    if (!cur || cur.patientId !== req.params.id || cur.type !== "receta") throw notFound("Receta no encontrada");
+    const body = updRecetaSchema.parse(req.body);
+    const prev = (cur.prescription as { templateId?: string; items: unknown[] } | null) ?? { items: [] };
+    const r = await prisma.clinicalRecord.update({
+      where: { id: cur.id },
+      data: {
+        ...(body.professionalId ? { professionalId: body.professionalId } : {}),
+        ...(body.items ? { prescription: { templateId: prev.templateId, items: body.items } as Prisma.InputJsonValue } : {}),
+      },
+      include: { professional: { select: { id: true, name: true } } },
+    });
+    const pat = await prisma.patient.findUnique({ where: { id: cur.patientId } });
+    await audit(req, "Editó receta", "historia", pat ? `${pat.firstName} ${pat.lastName}` : "");
+    res.json(r);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/:id/recetas/:rid", requireModule("historia", "write"), async (req, res, next) => {
+  try {
+    const cur = await prisma.clinicalRecord.findUnique({ where: { id: req.params.rid } });
+    if (!cur || cur.patientId !== req.params.id || cur.type !== "receta") throw notFound("Receta no encontrada");
+    await prisma.clinicalRecord.delete({ where: { id: cur.id } });
+    const pat = await prisma.patient.findUnique({ where: { id: cur.patientId } });
+    await audit(req, "Eliminó receta", "historia", pat ? `${pat.firstName} ${pat.lastName}` : "");
+    res.status(204).end();
   } catch (e) {
     next(e);
   }

@@ -5,7 +5,8 @@ import { Icon } from "@/components/icons";
 import { fmtDate } from "@/lib/helpers";
 import { roleCanWrite } from "@/lib/permissions";
 import { useAuth } from "@/lib/auth";
-import { adjustInventory, listInventory } from "./api";
+import type { InventoryItem } from "@/lib/types";
+import { adjustInventory, deleteInventoryItem, listInventory } from "./api";
 import { NewItemModal } from "./NewItemModal";
 
 const INV_TYPE: Record<string, string> = {
@@ -20,7 +21,11 @@ export function InventoryView() {
   const role = profile?.role ?? "admin";
   const canWrite = roleCanWrite(role, "inventario");
   const qc = useQueryClient();
+
   const [openNew, setOpenNew] = useState(false);
+  const [edit, setEdit] = useState<InventoryItem | null>(null);
+  // per-row custom delta: Map itemId → string input value
+  const [deltas, setDeltas] = useState<Record<string, string>>({});
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["inventory"],
@@ -31,6 +36,22 @@ export function InventoryView() {
     mutationFn: ({ id, delta }: { id: string; delta: number }) => adjustInventory(id, delta),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory"] }),
   });
+
+  const del = useMutation({
+    mutationFn: (id: string) => deleteInventoryItem(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory"] }),
+  });
+
+  function getDelta(id: string): number {
+    const v = Number(deltas[id] ?? "1");
+    return isNaN(v) || v <= 0 ? 1 : Math.floor(v);
+  }
+
+  function handleDelete(item: InventoryItem) {
+    if (window.confirm(`¿Eliminar "${item.name}" del inventario? Esta acción no se puede deshacer.`)) {
+      del.mutate(item.id);
+    }
+  }
 
   const low = items.filter((i) => Number(i.stock) <= Number(i.minStock));
 
@@ -74,7 +95,8 @@ export function InventoryView() {
                 <th>Lote · Venc.</th>
                 <th>Stock</th>
                 <th></th>
-                {canWrite ? <th style={{ width: 160 }}>Ajustar</th> : null}
+                {canWrite ? <th style={{ width: 220 }}>Ajustar</th> : null}
+                {canWrite ? <th style={{ width: 80 }}></th> : null}
               </tr>
             </thead>
             <tbody>
@@ -85,6 +107,7 @@ export function InventoryView() {
                 const pct = min > 0 ? Math.min(100, (stock / (min * 3)) * 100) : 100;
                 const expSoon =
                   i.expiryDate && new Date(i.expiryDate).getTime() - Date.now() < 180 * 864e5;
+                const d = deltas[i.id] ?? "1";
                 return (
                   <tr key={i.id}>
                     <td>
@@ -128,16 +151,29 @@ export function InventoryView() {
                     </td>
                     {canWrite ? (
                       <td>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <Btn sm onClick={() => adjust.mutate({ id: i.id, delta: -1 })}>
+                        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={d}
+                            onChange={(e) => setDeltas({ ...deltas, [i.id]: e.target.value })}
+                            style={{ width: 52, textAlign: "center" }}
+                          />
+                          <Btn sm onClick={() => adjust.mutate({ id: i.id, delta: -getDelta(i.id) })}>
                             −
                           </Btn>
-                          <Btn sm onClick={() => adjust.mutate({ id: i.id, delta: +1 })}>
+                          <Btn sm onClick={() => adjust.mutate({ id: i.id, delta: +getDelta(i.id) })}>
                             +
                           </Btn>
-                          <Btn sm onClick={() => adjust.mutate({ id: i.id, delta: +10 })}>
-                            +10
-                          </Btn>
+                        </div>
+                      </td>
+                    ) : null}
+                    {canWrite ? (
+                      <td>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <Btn sm icon="pen" title="Editar" onClick={() => setEdit(i)} />
+                          <Btn sm icon="trash" title="Eliminar" onClick={() => handleDelete(i)} />
                         </div>
                       </td>
                     ) : null}
@@ -150,6 +186,7 @@ export function InventoryView() {
       )}
 
       {openNew ? <NewItemModal onClose={() => setOpenNew(false)} /> : null}
+      {edit ? <NewItemModal edit={edit} onClose={() => setEdit(null)} /> : null}
     </div>
   );
 }

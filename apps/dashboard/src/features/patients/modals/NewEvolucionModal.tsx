@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "@/components/Modal";
 import { Btn, Field } from "@/components/Primitives";
 import { fullName } from "@/lib/helpers";
-import { createEvolucion, listProfessionals } from "../api";
-import type { Patient } from "@/lib/types";
+import { createEvolucion, listProfessionals, updateEvolucion } from "../api";
+import type { ClinicalRecord, Patient } from "@/lib/types";
 
 const CIE10 = [
   { code: "L70.0", label: "Acné vulgar" },
@@ -19,16 +19,24 @@ const CIE10 = [
   { code: "L65.9", label: "Pérdida de cabello no cicatricial" },
 ];
 
-export function NewEvolucionModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
+export function NewEvolucionModal({
+  patient,
+  onClose,
+  edit,
+}: {
+  patient: Patient;
+  onClose: () => void;
+  edit?: ClinicalRecord;
+}) {
   const qc = useQueryClient();
   const { data: profs = [] } = useQuery({ queryKey: ["professionals"], queryFn: listProfessionals });
   const [f, setF] = useState({
-    professionalId: "",
-    subjective: "",
-    objective: "",
-    assessment: "",
-    plan: "",
-    codes: [] as string[],
+    professionalId: edit?.professionalId ?? "",
+    subjective: edit?.subjective ?? "",
+    objective: edit?.objective ?? "",
+    assessment: edit?.assessment ?? "",
+    plan: edit?.plan ?? "",
+    codes: edit?.cie10Codes ?? ([] as string[]),
   });
 
   useEffect(() => {
@@ -43,15 +51,17 @@ export function NewEvolucionModal({ patient, onClose }: { patient: Patient; onCl
   const valid = f.professionalId && f.subjective && f.objective && f.assessment && f.plan;
 
   const m = useMutation({
-    mutationFn: () =>
-      createEvolucion(patient.id, {
+    mutationFn: () => {
+      const payload = {
         professionalId: f.professionalId,
         subjective: f.subjective,
         objective: f.objective,
         assessment: f.assessment,
         plan: f.plan,
         cie10Codes: f.codes,
-      }),
+      };
+      return edit ? updateEvolucion(patient.id, edit.id, payload) : createEvolucion(patient.id, payload);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["evolucion", patient.id] });
       qc.invalidateQueries({ queryKey: ["patient-counts", patient.id] });
@@ -62,13 +72,13 @@ export function NewEvolucionModal({ patient, onClose }: { patient: Patient; onCl
   return (
     <Modal
       wide
-      title={`Nueva evolución · ${fullName(patient)}`}
+      title={`${edit ? "Editar" : "Nueva"} evolución · ${fullName(patient)}`}
       onClose={onClose}
       foot={
         <>
           <Btn onClick={onClose}>Cancelar</Btn>
           <Btn kind="primary" icon="check" disabled={!valid || m.isPending} onClick={() => m.mutate()}>
-            {m.isPending ? "Guardando…" : "Guardar evolución"}
+            {m.isPending ? "Guardando…" : edit ? "Guardar cambios" : "Guardar evolución"}
           </Btn>
         </>
       }
