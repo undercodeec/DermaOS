@@ -10,7 +10,7 @@ router.use(requireAuth, requireModule("facturacion"));
 router.get("/", async (req, res, next) => {
   try {
     const { status, patientId } = req.query as Record<string, string>;
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { clinicId: req.user!.clinicId };
     if (status) where.status = status;
     if (patientId) where.patientId = patientId;
     const list = await prisma.invoice.findMany({
@@ -50,8 +50,8 @@ router.get("/", async (req, res, next) => {
 
 router.get("/:id", async (req, res, next) => {
   try {
-    const inv = await prisma.invoice.findUnique({
-      where: { id: req.params.id },
+    const inv = await prisma.invoice.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
       include: {
         patient: { select: { firstName: true, lastName: true, idNumber: true, email: true, phone: true } },
       },
@@ -74,7 +74,9 @@ const FLOW = ["borrador", "generada", "firmada", "autorizada"] as const;
 
 router.patch("/:id/advance", requireModule("facturacion", "write"), async (req, res, next) => {
   try {
-    const cur = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+    const cur = await prisma.invoice.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!cur) throw notFound("Factura no encontrada");
     const idx = FLOW.indexOf(cur.status as (typeof FLOW)[number]);
     if (idx < 0 || idx >= FLOW.length - 1) {

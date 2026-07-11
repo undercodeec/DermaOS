@@ -8,12 +8,14 @@ import { notFound } from "../lib/errors.js";
 const router = Router();
 router.use(requireAuth, requireModule("paquetes"));
 
-// Catálogo de paquetes. ?active=1 filtra solo los activos (uso para Vender).
 router.get("/", async (req, res, next) => {
   try {
     const onlyActive = req.query.active === "1";
     const list = await prisma.package.findMany({
-      where: onlyActive ? { active: true } : undefined,
+      where: {
+        clinicId: req.user!.clinicId,
+        ...(onlyActive ? { active: true } : {}),
+      },
       include: { service: { select: { id: true, name: true, price: true } } },
       orderBy: { name: "asc" },
     });
@@ -24,9 +26,10 @@ router.get("/", async (req, res, next) => {
 });
 
 // Todos los bonos vendidos (para vista global)
-router.get("/balances", async (_req, res, next) => {
+router.get("/balances", async (req, res, next) => {
   try {
     const list = await prisma.packageBalance.findMany({
+      where: { clinicId: req.user!.clinicId },
       include: {
         package: true,
         payments: { select: { amount: true } },
@@ -54,6 +57,7 @@ router.post("/", requireModule("paquetes", "write"), async (req, res, next) => {
     const b = newPackageSchema.parse(req.body);
     const pk = await prisma.package.create({
       data: {
+        clinicId: req.user!.clinicId,
         name: b.name,
         serviceId: b.serviceId,
         sessions: b.sessions,
@@ -75,7 +79,9 @@ const editPackageSchema = newPackageSchema.partial().extend({ active: z.boolean(
 
 router.patch("/:id", requireModule("paquetes", "write"), async (req, res, next) => {
   try {
-    const cur = await prisma.package.findUnique({ where: { id: req.params.id } });
+    const cur = await prisma.package.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!cur) throw notFound("Paquete no encontrado");
     const b = editPackageSchema.parse(req.body);
     const pk = await prisma.package.update({

@@ -6,6 +6,7 @@ export interface TokenPayload {
   sub: string;
   email: string;
   role: Role;
+  clinicId: string;
 }
 
 export function signToken(payload: TokenPayload): string {

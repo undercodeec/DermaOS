@@ -8,9 +8,12 @@ import { notFound } from "../lib/errors.js";
 const router = Router();
 router.use(requireAuth, requireModule("inventario"));
 
-router.get("/", async (_req, res, next) => {
+router.get("/", async (req, res, next) => {
   try {
-    const list = await prisma.inventoryItem.findMany({ orderBy: { name: "asc" } });
+    const list = await prisma.inventoryItem.findMany({
+      where: { clinicId: req.user!.clinicId },
+      orderBy: { name: "asc" },
+    });
     res.json(list);
   } catch (e) {
     next(e);
@@ -32,6 +35,7 @@ router.post("/", requireModule("inventario", "write"), async (req, res, next) =>
     const b = newItemSchema.parse(req.body);
     const item = await prisma.inventoryItem.create({
       data: {
+        clinicId: req.user!.clinicId,
         name: b.name,
         type: b.type,
         unit: b.unit,
@@ -59,7 +63,9 @@ const editItemSchema = z.object({
 
 router.patch("/:id", requireModule("inventario", "write"), async (req, res, next) => {
   try {
-    const cur = await prisma.inventoryItem.findUnique({ where: { id: req.params.id } });
+    const cur = await prisma.inventoryItem.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!cur) throw notFound("Ítem no encontrado");
     const b = editItemSchema.parse(req.body);
     const item = await prisma.inventoryItem.update({
@@ -87,7 +93,9 @@ router.patch("/:id", requireModule("inventario", "write"), async (req, res, next
 
 router.delete("/:id", requireModule("inventario", "write"), async (req, res, next) => {
   try {
-    const cur = await prisma.inventoryItem.findUnique({ where: { id: req.params.id } });
+    const cur = await prisma.inventoryItem.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!cur) throw notFound("Ítem no encontrado");
     await prisma.inventoryItem.delete({ where: { id: cur.id } });
     await audit(req, "Eliminó ítem de inventario", "sistema", cur.name);
@@ -97,12 +105,13 @@ router.delete("/:id", requireModule("inventario", "write"), async (req, res, nex
   }
 });
 
-// Ajuste de stock (puede ser positivo o negativo)
 const adjustSchema = z.object({ delta: z.number() });
 
 router.patch("/:id/adjust", requireModule("inventario", "write"), async (req, res, next) => {
   try {
-    const cur = await prisma.inventoryItem.findUnique({ where: { id: req.params.id } });
+    const cur = await prisma.inventoryItem.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!cur) throw notFound("Ítem no encontrado");
     const { delta } = adjustSchema.parse(req.body);
     const newStock = Math.max(0, Number(cur.stock) + delta);

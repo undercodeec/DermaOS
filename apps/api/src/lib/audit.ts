@@ -15,6 +15,7 @@ export async function audit(
   if (!u) return;
   await prisma.auditLog.create({
     data: {
+      clinicId: u.clinicId,
       userId: u.id,
       action,
       cat,

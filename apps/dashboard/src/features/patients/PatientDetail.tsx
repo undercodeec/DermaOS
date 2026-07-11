@@ -13,7 +13,7 @@ import { TabFotos } from "./tabs/TabFotos";
 import { TabConsents } from "./tabs/TabConsents";
 import { TabProcs } from "./tabs/TabProcs";
 import { TabPaquetes } from "./tabs/TabPaquetes";
-import { TabFacturas } from "./tabs/TabFacturas";
+// import { TabFacturas } from "./tabs/TabFacturas"; // INVOICES_ENABLED
 
 const TABS = [
   { id: "antecedentes", label: "Antecedentes" },
@@ -23,7 +23,7 @@ const TABS = [
   { id: "consentimientos", label: "Consentimientos" },
   { id: "procedimientos", label: "Procedimientos" },
   { id: "paquetes", label: "Paquetes" },
-  { id: "facturas", label: "Facturas" },
+  // { id: "facturas", label: "Facturas" }, // INVOICES_ENABLED
 ] as const;
 
 const TAB_MOD: Record<(typeof TABS)[number]["id"], ModuleId> = {
@@ -34,7 +34,7 @@ const TAB_MOD: Record<(typeof TABS)[number]["id"], ModuleId> = {
   consentimientos: "consentimientos",
   procedimientos: "procedimientos",
   paquetes: "paquetes",
-  facturas: "facturacion",
+  // facturas: "facturacion", // INVOICES_ENABLED
 };
 
 export function PatientDetail() {
@@ -80,7 +80,7 @@ export function PatientDetail() {
       consentimientos: TabConsents,
       procedimientos: TabProcs,
       paquetes: TabPaquetes,
-      facturas: TabFacturas,
+      // facturas: TabFacturas, // INVOICES_ENABLED
     }[tab as (typeof TABS)[number]["id"]] ?? TabAntecedentes;
 
   return (

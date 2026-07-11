@@ -34,7 +34,7 @@ const NAV_SECTIONS: { label: string; sub: string; items: NavItem[] }[] = [
     sub: "Cobros y stock",
     items: [
       { path: "/payments", icon: "card", label: "Cobros", mod: "pagos" },
-      { path: "/billing", icon: "receipt", label: "Facturación", mod: "facturacion" },
+      // { path: "/billing", icon: "receipt", label: "Facturación", mod: "facturacion" }, // INVOICES_ENABLED
       { path: "/inventory", icon: "box", label: "Inventario", mod: "inventario" },
     ],
   },

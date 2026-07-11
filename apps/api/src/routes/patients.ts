@@ -10,6 +10,20 @@ import { calcInvoiceTotals, nextInvoiceNumber, sriAccessKey, EMISOR_RUC } from "
 const router = Router();
 router.use(requireAuth, requireModule("pacientes"));
 
+// Garantiza que el paciente :id pertenece a la clínica del usuario en sesión.
+// Protege todos los sub-recursos de /:id sin repetir código en cada handler.
+router.param("id", async (req, _res, next, id) => {
+  try {
+    const exists = await prisma.patient.count({
+      where: { id, clinicId: req.user!.clinicId },
+    });
+    if (!exists) return next(notFound("Paciente no encontrado"));
+    next();
+  } catch (e) {
+    next(e);
+  }
+});
+
 const backgroundSchema = z.object({
   skinType: z.enum(["I", "II", "III", "IV", "V", "VI"]),
   usesSunscreen: z.boolean(),
@@ -39,15 +53,18 @@ const newPatientSchema = z.object({
 router.get("/", async (req, res, next) => {
   try {
     const q = String(req.query.q ?? "").trim();
-    const where: Prisma.PatientWhereInput = q
-      ? {
-          OR: [
-            { firstName: { contains: q, mode: "insensitive" } },
-            { lastName:  { contains: q, mode: "insensitive" } },
-            { idNumber:  { contains: q } },
-          ],
-        }
-      : {};
+    const where: Prisma.PatientWhereInput = {
+      clinicId: req.user!.clinicId,
+      ...(q
+        ? {
+            OR: [
+              { firstName: { contains: q, mode: "insensitive" } },
+              { lastName:  { contains: q, mode: "insensitive" } },
+              { idNumber:  { contains: q } },
+            ],
+          }
+        : {}),
+    };
     const list = await prisma.patient.findMany({ where, orderBy: { createdAt: "desc" } });
     res.json(list.map(serializePatient));
   } catch (e) {
@@ -88,6 +105,7 @@ router.post("/", requireModule("pacientes", "write"), async (req, res, next) => 
     const body = newPatientSchema.parse(req.body);
     const p = await prisma.patient.create({
       data: {
+        clinicId: req.user!.clinicId,
         firstName: body.first_name,
         lastName: body.last_name,
         idType: body.id_type,
@@ -301,7 +319,9 @@ router.post("/:id/consents", requireModule("consentimientos", "write"), async (r
     const pat = await prisma.patient.findUnique({ where: { id: req.params.id } });
     if (!pat) throw notFound("Paciente no encontrado");
     const body = newConsentSchema.parse(req.body);
-    const tpl = await prisma.consentTemplate.findUnique({ where: { id: body.templateId } });
+    const tpl = await prisma.consentTemplate.findFirst({
+      where: { id: body.templateId, clinicId: req.user!.clinicId },
+    });
     if (!tpl) throw badRequest("Plantilla de consentimiento inválida");
     const c = await prisma.consent.create({
       data: { patientId: pat.id, templateId: tpl.id, status: "pendiente" },
@@ -396,13 +416,16 @@ router.post("/:id/balances", requireModule("paquetes", "write"), async (req, res
     const pat = await prisma.patient.findUnique({ where: { id: req.params.id } });
     if (!pat) throw notFound("Paciente no encontrado");
     const body = sellPackageSchema.parse(req.body);
-    const pk = await prisma.package.findUnique({ where: { id: body.packageId } });
+    const pk = await prisma.package.findFirst({
+      where: { id: body.packageId, clinicId: req.user!.clinicId },
+    });
     if (!pk || !pk.active) throw badRequest("Paquete no disponible");
 
     const soldAt = new Date();
     const vencimiento = new Date(Date.now() + (pk.validityDays || 365) * 864e5);
     const bal = await prisma.packageBalance.create({
       data: {
+        clinicId: req.user!.clinicId,
         patientId: pat.id,
         packageId: pk.id,
         soldAt,
@@ -426,7 +449,6 @@ router.post("/:id/balances", requireModule("paquetes", "write"), async (req, res
       });
     }
     await audit(req, "Vendió paquete", "paquetes", `${pk.name} · ${pat.firstName} ${pat.lastName}`);
-    // Recargar con payments actualizado
     const fresh = await prisma.packageBalance.findUnique({
       where: { id: bal.id },
       include: { package: true, payments: { select: { amount: true } } },
@@ -441,7 +463,7 @@ router.post("/:id/balances", requireModule("paquetes", "write"), async (req, res
 router.get("/:id/invoices", async (req, res, next) => {
   try {
     const list = await prisma.invoice.findMany({
-      where: { patientId: req.params.id },
+      where: { patientId: req.params.id, clinicId: req.user!.clinicId },
       orderBy: { date: "desc" },
     });
     res.json(list);
@@ -469,6 +491,7 @@ router.post("/:id/invoices", requireModule("facturacion", "write"), async (req, 
 
     const t = calcInvoiceTotals(body.lines);
     const last = await prisma.invoice.findFirst({
+      where: { clinicId: req.user!.clinicId },
       orderBy: { number: "desc" },
       select: { number: true },
     });
@@ -477,6 +500,7 @@ router.post("/:id/invoices", requireModule("facturacion", "write"), async (req, 
     const accessKey = sriAccessKey(date, seq, EMISOR_RUC);
     const inv = await prisma.invoice.create({
       data: {
+        clinicId: req.user!.clinicId,
         number,
         patientId: pat.id,
         customerName: body.customerName ?? `${pat.firstName} ${pat.lastName}`,

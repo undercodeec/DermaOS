@@ -8,7 +8,7 @@ import { prisma } from "../db.js";
 import { env } from "../env.js";
 import { requireAuth, requireModule } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
-import { badRequest, notFound } from "../lib/errors.js";
+import { badRequest, forbidden, notFound } from "../lib/errors.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -41,6 +41,12 @@ router.post(
       if (!req.file) throw badRequest("Falta archivo");
       const meta = metaSchema.parse(req.body);
 
+      // Verifica que el paciente pertenece a esta clínica
+      const patient = await prisma.patient.findFirst({
+        where: { id: meta.patient_id, clinicId: req.user!.clinicId },
+      });
+      if (!patient) throw badRequest("Paciente no encontrado");
+
       const ext = (req.file.mimetype.split("/")[1] ?? "bin").toLowerCase();
       const filename = `${Date.now()}_${cryptoRandom(8)}.${ext}`;
       const filepath = path.join(PHOTO_DIR, filename);
@@ -65,11 +71,15 @@ router.post(
   },
 );
 
-// Sirve el binario protegido por JWT (cliente lo carga vía fetch + blob URL)
+// Sirve el binario protegido por JWT
 router.get("/:id/file", requireModule("fotos"), async (req, res, next) => {
   try {
-    const p = await prisma.photo.findUnique({ where: { id: req.params.id } });
+    const p = await prisma.photo.findUnique({
+      where: { id: req.params.id },
+      include: { patient: { select: { clinicId: true } } },
+    });
     if (!p) throw notFound("Foto no existe");
+    if (p.patient.clinicId !== req.user!.clinicId) throw forbidden();
     const full = path.join(PHOTO_DIR, p.storagePath);
     if (!isInside(full, PHOTO_DIR)) throw notFound();
     await audit(req, "Visualizó fotografía clínica", "fotos", p.lesionTag);
@@ -82,12 +92,13 @@ router.get("/:id/file", requireModule("fotos"), async (req, res, next) => {
 
 router.delete("/:id", requireModule("fotos", "write"), async (req, res, next) => {
   try {
-    const p = await prisma.photo.findUnique({ where: { id: req.params.id } });
+    const p = await prisma.photo.findUnique({
+      where: { id: req.params.id },
+      include: { patient: { select: { clinicId: true } } },
+    });
     if (!p) throw notFound();
-    if (req.user!.role !== "admin") {
-      // Solo admin elimina
-      return next(notFound());
-    }
+    if (p.patient.clinicId !== req.user!.clinicId) throw forbidden();
+    if (req.user!.role !== "admin") return next(notFound());
     await prisma.photo.delete({ where: { id: p.id } });
     await fs.unlink(path.join(PHOTO_DIR, p.storagePath)).catch(() => {});
     await audit(req, "Eliminó fotografía clínica", "fotos", p.lesionTag);

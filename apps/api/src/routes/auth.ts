@@ -41,6 +41,7 @@ router.post("/login", async (req, res, next) => {
       if (!verifyTotp(user.mfaSecret, body.totpCode)) {
         await prisma.auditLog.create({
           data: {
+            clinicId: user.clinicId,
             userId: user.id,
             action: "Intento de inicio de sesión denegado",
             cat: "sesion",
@@ -52,10 +53,11 @@ router.post("/login", async (req, res, next) => {
       }
     }
 
-    const token = signToken({ sub: user.id, email: user.email, role: user.role });
+    const token = signToken({ sub: user.id, email: user.email, role: user.role, clinicId: user.clinicId });
     await prisma.user.update({ where: { id: user.id }, data: { lastAccess: new Date() } });
     await prisma.auditLog.create({
       data: {
+        clinicId: user.clinicId,
         userId: user.id,
         action: "Inició sesión",
         cat: "sesion",
@@ -85,10 +87,11 @@ router.post("/mfa/verify-setup", async (req, res, next) => {
     if (!ok) throw unauthorized("Credenciales inválidas");
     if (!user.mfaSecret) throw unauthorized("Setup MFA no iniciado");
     if (!verifyTotp(user.mfaSecret, body.totpCode)) throw unauthorized("Código MFA inválido");
-    const token = signToken({ sub: user.id, email: user.email, role: user.role });
+    const token = signToken({ sub: user.id, email: user.email, role: user.role, clinicId: user.clinicId });
     await prisma.user.update({ where: { id: user.id }, data: { lastAccess: new Date() } });
     await prisma.auditLog.create({
       data: {
+        clinicId: user.clinicId,
         userId: user.id,
         action: "Configuró MFA y entró",
         cat: "sesion",
@@ -114,7 +117,13 @@ router.get("/me", requireAuth, async (req, res, next) => {
 
 router.post("/logout", requireAuth, async (req, res) => {
   await prisma.auditLog.create({
-    data: { userId: req.user!.id, action: "Cerró sesión", cat: "sesion", ip: req.ip ?? null },
+    data: {
+      clinicId: req.user!.clinicId,
+      userId: req.user!.id,
+      action: "Cerró sesión",
+      cat: "sesion",
+      ip: req.ip ?? null,
+    },
   });
   res.json({ ok: true });
 });

@@ -54,7 +54,7 @@ function genPayphone() {
 router.get("/", async (req, res, next) => {
   try {
     const { patientId, status } = req.query as Record<string, string>;
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { clinicId: req.user!.clinicId };
     if (patientId) where.patientId = patientId;
     if (status) where.status = status;
     const list = await prisma.payment.findMany({
@@ -85,6 +85,7 @@ router.post("/", requireModule("pagos", "write"), async (req, res, next) => {
     const { link, txId } = genPayphone();
     const created = await prisma.payment.create({
       data: {
+        clinicId: req.user!.clinicId,
         patientId: b.patientId,
         conceptType: b.conceptType,
         conceptRefId: b.conceptRefId ?? null,
@@ -115,7 +116,9 @@ router.post("/", requireModule("pagos", "write"), async (req, res, next) => {
 const sentSchema = z.object({ via: z.enum(SENT_VIA) });
 router.patch("/:id/sent", requireModule("pagos", "write"), async (req, res, next) => {
   try {
-    const cur = await prisma.payment.findUnique({ where: { id: req.params.id } });
+    const cur = await prisma.payment.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!cur) throw notFound("Cobro no encontrado");
     if (cur.status !== "pendiente") throw badRequest("Solo se envían cobros pendientes");
     const { via } = sentSchema.parse(req.body);
@@ -140,8 +143,8 @@ router.patch("/:id/sent", requireModule("pagos", "write"), async (req, res, next
 
 router.patch("/:id/paid", requireModule("pagos", "write"), async (req, res, next) => {
   try {
-    const cur = await prisma.payment.findUnique({
-      where: { id: req.params.id },
+    const cur = await prisma.payment.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
       include: {
         patient: { select: { firstName: true, lastName: true, idNumber: true, phone: true } },
       },
@@ -164,7 +167,7 @@ router.patch("/:id/paid", requireModule("pagos", "write"), async (req, res, next
       `$${Number(cur.amount).toFixed(2)} · ${cur.patient?.firstName ?? ""} ${cur.patient?.lastName ?? ""}`.trim(),
     );
 
-    // Conciliación automática con M5: si es un cobro de paquete, registrar abono
+    // Conciliación automática: si es cobro de paquete, registrar abono
     if (cur.conceptType === "paquete" && cur.conceptRefId) {
       const bal = await prisma.packageBalance.findUnique({
         where: { id: cur.conceptRefId },
@@ -196,7 +199,9 @@ router.patch("/:id/paid", requireModule("pagos", "write"), async (req, res, next
 
 router.patch("/:id/void", requireModule("pagos", "write"), async (req, res, next) => {
   try {
-    const cur = await prisma.payment.findUnique({ where: { id: req.params.id } });
+    const cur = await prisma.payment.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!cur) throw notFound("Cobro no encontrado");
     if (cur.status !== "pendiente") throw badRequest("Solo se anulan cobros pendientes");
     const updated = await prisma.payment.update({

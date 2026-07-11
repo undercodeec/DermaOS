@@ -2,12 +2,11 @@ import { Router } from "express";
 import { prisma } from "../db.js";
 import { requireAuth, requireModule } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
-import { notFound } from "../lib/errors.js";
+import { forbidden, notFound } from "../lib/errors.js";
 
 const router = Router();
 router.use(requireAuth);
 
-// Firma el consentimiento. La firma se guarda como signaturePath (placeholder de demo).
 router.post("/:id/sign", requireModule("consentimientos", "write"), async (req, res, next) => {
   try {
     const c = await prisma.consent.findUnique({
@@ -15,6 +14,8 @@ router.post("/:id/sign", requireModule("consentimientos", "write"), async (req, 
       include: { template: true, patient: true },
     });
     if (!c) throw notFound("Consentimiento no encontrado");
+    // Verifica que el consentimiento pertenece a un paciente de esta clínica
+    if (c.patient.clinicId !== req.user!.clinicId) throw forbidden();
     const updated = await prisma.consent.update({
       where: { id: c.id },
       data: {

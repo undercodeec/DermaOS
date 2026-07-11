@@ -8,7 +8,7 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
-      user?: { id: string; email: string; role: Role };
+      user?: { id: string; email: string; role: Role; clinicId: string };
     }
   }
 }
@@ -19,7 +19,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   if (scheme !== "Bearer" || !token) return next(unauthorized());
   try {
     const payload = verifyToken(token);
-    req.user = { id: payload.sub, email: payload.email, role: payload.role };
+    req.user = { id: payload.sub, email: payload.email, role: payload.role, clinicId: payload.clinicId };
     return next();
   } catch {
     return next(unauthorized("Token inválido o expirado"));

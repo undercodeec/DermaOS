@@ -3,6 +3,7 @@ import cors from "cors";
 import { env } from "./env.js";
 import { errorHandler } from "./lib/errors.js";
 import authRouter from "./routes/auth.js";
+import clinicsRouter from "./routes/clinics.js";
 import patientsRouter from "./routes/patients.js";
 import photosRouter from "./routes/photos.js";
 import catalogRouter from "./routes/catalog.js";
@@ -13,7 +14,7 @@ import packagesRouter from "./routes/packages.js";
 import inventoryRouter from "./routes/inventory.js";
 import appointmentsRouter from "./routes/appointments.js";
 import paymentsRouter from "./routes/payments.js";
-import invoicesRouter from "./routes/invoices.js";
+// import invoicesRouter from "./routes/invoices.js"; // INVOICES_ENABLED
 import adminRouter from "./routes/admin.js";
 
 const app = express();
@@ -24,7 +25,6 @@ console.log("[cors] allowed origins:", allowedOrigins);
 app.use(
   cors({
     origin(requestOrigin, callback) {
-      // Allow requests with no origin (health checks, server-to-server, etc.)
       if (!requestOrigin) return callback(null, true);
       if (allowedOrigins.includes(requestOrigin)) {
         return callback(null, true);
@@ -40,6 +40,7 @@ app.use(express.json({ limit: "2mb" }));
 app.get("/health", (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
 app.use("/auth", authRouter);
+app.use("/clinics", clinicsRouter);
 app.use("/patients", patientsRouter);
 app.use("/photos", photosRouter);
 app.use("/consents", consentsRouter);
@@ -49,7 +50,7 @@ app.use("/packages", packagesRouter);
 app.use("/inventory", inventoryRouter);
 app.use("/appointments", appointmentsRouter);
 app.use("/payments", paymentsRouter);
-app.use("/invoices", invoicesRouter);
+// app.use("/invoices", invoicesRouter); // INVOICES_ENABLED — pendiente integración SRI
 app.use("/admin", adminRouter);
 app.use("/", catalogRouter);
 

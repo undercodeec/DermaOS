@@ -8,9 +8,10 @@ import { notFound } from "../lib/errors.js";
 const router = Router();
 router.use(requireAuth, requireRole("admin"));
 
-router.get("/users", async (_req, res, next) => {
+router.get("/users", async (req, res, next) => {
   try {
     const list = await prisma.user.findMany({
+      where: { clinicId: req.user!.clinicId },
       orderBy: [{ active: "desc" }, { fullName: "asc" }],
       select: {
         id: true,
@@ -44,7 +45,9 @@ const patchUserSchema = z.object({
 
 router.patch("/users/:id", async (req, res, next) => {
   try {
-    const cur = await prisma.user.findUnique({ where: { id: req.params.id } });
+    const cur = await prisma.user.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!cur) throw notFound("Usuario no encontrado");
     const b = patchUserSchema.parse(req.body);
     const u = await prisma.user.update({
@@ -87,7 +90,9 @@ router.patch("/users/:id", async (req, res, next) => {
 
 router.post("/users/:id/mfa/reset", async (req, res, next) => {
   try {
-    const cur = await prisma.user.findUnique({ where: { id: req.params.id } });
+    const cur = await prisma.user.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!cur) throw notFound("Usuario no encontrado");
     await prisma.user.update({ where: { id: cur.id }, data: { mfaSecret: null } });
     await audit(req, "Reseteó MFA de usuario", "sistema", cur.fullName);
@@ -100,7 +105,7 @@ router.post("/users/:id/mfa/reset", async (req, res, next) => {
 router.get("/audit-logs", async (req, res, next) => {
   try {
     const { cat, from, to, take } = req.query as Record<string, string>;
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { clinicId: req.user!.clinicId };
     if (cat) where.cat = cat;
     if (from || to) {
       const range: Record<string, Date> = {};

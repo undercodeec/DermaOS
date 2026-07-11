@@ -16,8 +16,8 @@ const abonoSchema = z.object({
 
 router.post("/:id/abonos", requireModule("paquetes", "write"), async (req, res, next) => {
   try {
-    const bal = await prisma.packageBalance.findUnique({
-      where: { id: req.params.id },
+    const bal = await prisma.packageBalance.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
       include: { package: true, patient: true },
     });
     if (!bal) throw notFound("Bono no encontrado");

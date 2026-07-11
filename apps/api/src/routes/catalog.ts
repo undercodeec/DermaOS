@@ -7,19 +7,23 @@ const router = Router();
 router.use(requireAuth);
 
 // KPIs del dashboard
-router.get("/kpis", async (_req, res, next) => {
+router.get("/kpis", async (req, res, next) => {
   try {
     const now = new Date();
+    const cid = req.user!.clinicId;
     const [citasHoy, ingresosRes, pacientes, inventario] = await Promise.all([
       prisma.appointment.count({
-        where: { startAt: { gte: startOfDay(now), lte: endOfDay(now) } },
+        where: { clinicId: cid, startAt: { gte: startOfDay(now), lte: endOfDay(now) } },
       }),
       prisma.invoice.aggregate({
-        where: { status: "autorizada", date: { gte: startOfMonth(now), lte: endOfMonth(now) } },
+        where: { clinicId: cid, status: "autorizada", date: { gte: startOfMonth(now), lte: endOfMonth(now) } },
         _sum: { total: true },
       }),
-      prisma.patient.count(),
-      prisma.inventoryItem.findMany({ select: { stock: true, minStock: true } }),
+      prisma.patient.count({ where: { clinicId: cid } }),
+      prisma.inventoryItem.findMany({
+        where: { clinicId: cid },
+        select: { stock: true, minStock: true },
+      }),
     ]);
     const alertas = inventario.filter((i) => Number(i.stock) <= Number(i.minStock)).length;
     res.json({
@@ -40,6 +44,7 @@ router.get("/search/patients", async (req, res, next) => {
     if (q.length < 2) return res.json([]);
     const list = await prisma.patient.findMany({
       where: {
+        clinicId: req.user!.clinicId,
         OR: [
           { firstName: { contains: q, mode: "insensitive" } },
           { lastName: { contains: q, mode: "insensitive" } },
@@ -63,9 +68,12 @@ router.get("/search/patients", async (req, res, next) => {
 });
 
 // Catálogo de profesionales
-router.get("/professionals", async (_req, res, next) => {
+router.get("/professionals", async (req, res, next) => {
   try {
-    const list = await prisma.professional.findMany({ orderBy: { name: "asc" } });
+    const list = await prisma.professional.findMany({
+      where: { clinicId: req.user!.clinicId },
+      orderBy: { name: "asc" },
+    });
     res.json(list);
   } catch (e) {
     next(e);
@@ -73,9 +81,12 @@ router.get("/professionals", async (_req, res, next) => {
 });
 
 // Catálogo de plantillas de consentimiento
-router.get("/consent-templates", async (_req, res, next) => {
+router.get("/consent-templates", async (req, res, next) => {
   try {
-    const list = await prisma.consentTemplate.findMany({ orderBy: { title: "asc" } });
+    const list = await prisma.consentTemplate.findMany({
+      where: { clinicId: req.user!.clinicId },
+      orderBy: { title: "asc" },
+    });
     res.json(list);
   } catch (e) {
     next(e);

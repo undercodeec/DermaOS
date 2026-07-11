@@ -4,8 +4,9 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 const ID = {
-  prAndrade: "11111111-1111-4111-8111-111111111111",
-  prCordero: "22222222-2222-4222-8222-222222222222",
+  clinic:     "00000000-0000-4000-9000-000000000001",
+  prAndrade:  "11111111-1111-4111-8111-111111111111",
+  prCordero:  "22222222-2222-4222-8222-222222222222",
   uAdmin:     "00000000-0000-4000-8000-000000000001",
   uRecepcion: "00000000-0000-4000-8000-000000000002",
   uAndrade:   "00000000-0000-4000-8000-000000000003",
@@ -34,12 +35,22 @@ async function main() {
   await prisma.service.deleteMany();
   await prisma.user.deleteMany();
   await prisma.professional.deleteMany();
+  await prisma.clinic.deleteMany();
 
-  console.log("[seed] profesionales (mínimos: referencias FK de usuarios)");
+  console.log("[seed] clínica por defecto");
+  await prisma.clinic.create({
+    data: {
+      id:   ID.clinic,
+      name: "Derma Piel y Pelo",
+      ruc:  "1790012345001",
+    },
+  });
+
+  console.log("[seed] profesionales");
   await prisma.professional.createMany({
     data: [
-      { id: ID.prAndrade, name: "Dra. Verónica Andrade", specialty: "Dermatología", registrationNo: "ACESS 1712-04-987654", color: "#7A4A2B" },
-      { id: ID.prCordero, name: "Dr. Esteban Cordero",   specialty: "Dermatología", registrationNo: "ACESS 1709-11-123456", color: "#3E6B5C" },
+      { id: ID.prAndrade, clinicId: ID.clinic, name: "Dra. Verónica Andrade", specialty: "Dermatología", registrationNo: "ACESS 1712-04-987654", color: "#7A4A2B" },
+      { id: ID.prCordero, clinicId: ID.clinic, name: "Dr. Esteban Cordero",   specialty: "Dermatología", registrationNo: "ACESS 1709-11-123456", color: "#3E6B5C" },
     ],
   });
 
@@ -47,16 +58,16 @@ async function main() {
   const hash = await bcrypt.hash("derma123", 10);
   await prisma.user.createMany({
     data: [
-      { id: ID.uAdmin,     fullName: "Christopher Gallardo", email: "admin@dermapielypelo.ec",       passwordHash: hash, role: "admin",       mfaEnabled: true,  active: true },
-      { id: ID.uRecepcion, fullName: "Gabriela Naranjo",     email: "recepcion@dermapielypelo.ec",   passwordHash: hash, role: "recepcion",   mfaEnabled: false, active: true },
-      { id: ID.uAndrade,   fullName: "Dra. Verónica Andrade",email: "v.andrade@dermapielypelo.ec",    passwordHash: hash, role: "profesional", mfaEnabled: true,  active: true, professionalId: ID.prAndrade },
-      { id: ID.uCordero,   fullName: "Dr. Esteban Cordero",  email: "e.cordero@dermapielypelo.ec",    passwordHash: hash, role: "profesional", mfaEnabled: false, active: true, professionalId: ID.prCordero },
-      { id: ID.uEstetica,  fullName: "Mishell Pazmiño",      email: "estetica@dermapielypelo.ec",     passwordHash: hash, role: "esteticista", mfaEnabled: false, active: true },
-      { id: ID.uContador,  fullName: "Andrés Salas",         email: "contabilidad@dermapielypelo.ec", passwordHash: hash, role: "contador",    mfaEnabled: false, active: false },
+      { id: ID.uAdmin,     clinicId: ID.clinic, fullName: "Christopher Gallardo",  email: "admin@dermapielypelo.ec",        passwordHash: hash, role: "admin",       mfaEnabled: true,  active: true },
+      { id: ID.uRecepcion, clinicId: ID.clinic, fullName: "Gabriela Naranjo",      email: "recepcion@dermapielypelo.ec",    passwordHash: hash, role: "recepcion",   mfaEnabled: false, active: true },
+      { id: ID.uAndrade,   clinicId: ID.clinic, fullName: "Dra. Verónica Andrade", email: "v.andrade@dermapielypelo.ec",    passwordHash: hash, role: "profesional", mfaEnabled: true,  active: true, professionalId: ID.prAndrade },
+      { id: ID.uCordero,   clinicId: ID.clinic, fullName: "Dr. Esteban Cordero",   email: "e.cordero@dermapielypelo.ec",    passwordHash: hash, role: "profesional", mfaEnabled: false, active: true, professionalId: ID.prCordero },
+      { id: ID.uEstetica,  clinicId: ID.clinic, fullName: "Mishell Pazmiño",       email: "estetica@dermapielypelo.ec",     passwordHash: hash, role: "esteticista", mfaEnabled: false, active: true },
+      { id: ID.uContador,  clinicId: ID.clinic, fullName: "Andrés Salas",          email: "contabilidad@dermapielypelo.ec", passwordHash: hash, role: "contador",    mfaEnabled: false, active: false },
     ],
   });
 
-  console.log("[seed] ✔ listo — 6 usuarios + 2 profesionales");
+  console.log("[seed] ✔ listo — 1 clínica + 6 usuarios + 2 profesionales");
 }
 
 main()

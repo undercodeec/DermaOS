@@ -57,7 +57,7 @@ function serialize(a: Awaited<ReturnType<typeof prisma.appointment.findFirstOrTh
 router.get("/", async (req, res, next) => {
   try {
     const { from, to, professionalId } = req.query as Record<string, string>;
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { clinicId: req.user!.clinicId };
     if (from || to) {
       const range: Record<string, Date> = {};
       if (from) range.gte = new Date(from);
@@ -93,7 +93,9 @@ const createSchema = z.object({
 router.post("/", requireModule("agenda", "write"), async (req, res, next) => {
   try {
     const b = createSchema.parse(req.body);
-    const svc = await prisma.service.findUnique({ where: { id: b.serviceId } });
+    const svc = await prisma.service.findFirst({
+      where: { id: b.serviceId, clinicId: req.user!.clinicId },
+    });
     if (!svc) throw notFound("Servicio no encontrado");
     const start = new Date(b.startAt);
     const end = b.endAt
@@ -103,6 +105,7 @@ router.post("/", requireModule("agenda", "write"), async (req, res, next) => {
 
     const created = await prisma.appointment.create({
       data: {
+        clinicId: req.user!.clinicId,
         patientId: b.patientId,
         serviceId: b.serviceId,
         professionalId: b.professionalId,
@@ -152,7 +155,6 @@ const patchSchema = z.object({
   professionalId: z.string().uuid().optional(),
 });
 
-// Consumo automático de paquete al marcar como atendida
 async function consumeForAppointment(apptId: string, patientId: string, serviceId: string, professionalId: string) {
   const already = await prisma.packageRedemption.findFirst({ where: { appointmentId: apptId } });
   if (already) return null;
@@ -190,7 +192,9 @@ async function consumeForAppointment(apptId: string, patientId: string, serviceI
 
 router.patch("/:id", requireModule("agenda", "write"), async (req, res, next) => {
   try {
-    const cur = await prisma.appointment.findUnique({ where: { id: req.params.id } });
+    const cur = await prisma.appointment.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!cur) throw notFound("Cita no encontrada");
     const b = patchSchema.parse(req.body);
 
@@ -231,8 +235,8 @@ router.patch("/:id", requireModule("agenda", "write"), async (req, res, next) =>
 
 router.delete("/:id", requireModule("agenda", "write"), async (req, res, next) => {
   try {
-    const cur = await prisma.appointment.findUnique({
-      where: { id: req.params.id },
+    const cur = await prisma.appointment.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
       include: { patient: { select: { firstName: true, lastName: true } } },
     });
     if (!cur) throw notFound("Cita no encontrada");
@@ -252,7 +256,9 @@ router.delete("/:id", requireModule("agenda", "write"), async (req, res, next) =
 // Cobertura de paquete (preview en CitaDetalleModal)
 router.get("/:id/coverage", async (req, res, next) => {
   try {
-    const a = await prisma.appointment.findUnique({ where: { id: req.params.id } });
+    const a = await prisma.appointment.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!a) throw notFound("Cita no encontrada");
 
     const consumed = await prisma.packageRedemption.findFirst({
@@ -272,6 +278,7 @@ router.get("/:id/coverage", async (req, res, next) => {
     const cover = await prisma.packageBalance.findFirst({
       where: {
         patientId: a.patientId,
+        clinicId: req.user!.clinicId,
         status: "activo",
         vencimiento: { gt: new Date() },
         package: { serviceId: a.serviceId },

@@ -12,7 +12,10 @@ router.get("/", async (req, res, next) => {
   try {
     const onlyActive = req.query.active === "1";
     const list = await prisma.service.findMany({
-      where: onlyActive ? { active: true } : undefined,
+      where: {
+        clinicId: req.user!.clinicId,
+        ...(onlyActive ? { active: true } : {}),
+      },
       orderBy: { name: "asc" },
     });
     res.json(list);
@@ -42,10 +45,10 @@ const editSchema = z.object({
 router.post("/", requireModule("servicios", "write"), async (req, res, next) => {
   try {
     const b = newSchema.parse(req.body);
-    // Estéticos siempre IVA 15
     const vatRate = b.category === "procedimiento_estetico" ? 15 : b.vatRate;
     const s = await prisma.service.create({
       data: {
+        clinicId: req.user!.clinicId,
         name: b.name,
         category: b.category,
         durationMin: b.durationMin,
@@ -63,7 +66,9 @@ router.post("/", requireModule("servicios", "write"), async (req, res, next) => 
 
 router.patch("/:id", requireModule("servicios", "write"), async (req, res, next) => {
   try {
-    const cur = await prisma.service.findUnique({ where: { id: req.params.id } });
+    const cur = await prisma.service.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!cur) throw notFound("Servicio no encontrado");
     const b = editSchema.parse(req.body);
     const category = b.category ?? cur.category;

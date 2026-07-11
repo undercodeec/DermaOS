@@ -1,5 +1,4 @@
 // DERMA-OS · esquema Prisma (Postgres local)
-// Traducción del modelo de producción del prototipo.
 
 generator client {
   provider = "prisma-client-js"
@@ -87,11 +86,41 @@ enum PackageBalanceStatus {
 }
 
 // =============================================================================
+// TENANT RAÍZ
+// =============================================================================
+
+model Clinic {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  ruc       String?
+  publicKey String?  @unique @map("public_key")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  users            User[]
+  patients         Patient[]
+  professionals    Professional[]
+  services         Service[]
+  packages         Package[]
+  packageBalances  PackageBalance[]
+  inventory        InventoryItem[]
+  invoices         Invoice[]
+  auditLogs        AuditLog[]
+  consentTemplates ConsentTemplate[]
+  appointments     Appointment[]
+  payments         Payment[]
+
+  @@map("clinics")
+}
+
+// =============================================================================
 // MODELOS
 // =============================================================================
 
 model User {
   id             String    @id @default(uuid()) @db.Uuid
+  clinicId       String    @map("clinic_id") @db.Uuid
+  clinic         Clinic    @relation(fields: [clinicId], references: [id])
   fullName       String    @map("full_name")
   email          String    @unique
   passwordHash   String    @map("password_hash")
@@ -107,12 +136,15 @@ model User {
   auditLogs   AuditLog[]
   photosTaken Photo[]
 
+  @@index([clinicId])
   @@index([role])
   @@map("users")
 }
 
 model Professional {
   id             String   @id @default(uuid()) @db.Uuid
+  clinicId       String   @map("clinic_id") @db.Uuid
+  clinic         Clinic   @relation(fields: [clinicId], references: [id])
   name           String
   specialty      String   @default("Dermatología")
   registrationNo String   @map("registration_no")
@@ -126,11 +158,14 @@ model Professional {
   packagesSold        PackageBalance[]    @relation("PackageSeller")
   redemptions         PackageRedemption[]
 
+  @@index([clinicId])
   @@map("professionals")
 }
 
 model Patient {
   id               String    @id @default(uuid()) @db.Uuid
+  clinicId         String    @map("clinic_id") @db.Uuid
+  clinic           Clinic    @relation(fields: [clinicId], references: [id])
   firstName        String    @map("first_name")
   lastName         String    @map("last_name")
   idType           String    @default("cedula") @map("id_type")
@@ -153,13 +188,16 @@ model Patient {
   packageBalances  PackageBalance[]
   payments         Payment[]
 
-  @@unique([idType, idNumber])
+  @@unique([clinicId, idType, idNumber])
+  @@index([clinicId])
   @@index([lastName, firstName])
   @@map("patients")
 }
 
 model Service {
   id          String  @id @default(uuid()) @db.Uuid
+  clinicId    String  @map("clinic_id") @db.Uuid
+  clinic      Clinic  @relation(fields: [clinicId], references: [id])
   name        String
   category    String
   durationMin Int     @map("duration_min")
@@ -171,11 +209,14 @@ model Service {
   procedures   Procedure[]
   packages     Package[]
 
+  @@index([clinicId])
   @@map("services")
 }
 
 model Appointment {
   id             String            @id @default(uuid()) @db.Uuid
+  clinicId       String            @map("clinic_id") @db.Uuid
+  clinic         Clinic            @relation(fields: [clinicId], references: [id])
   patientId      String            @map("patient_id") @db.Uuid
   patient        Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
   serviceId      String            @map("service_id") @db.Uuid
@@ -190,6 +231,7 @@ model Appointment {
 
   redemptions PackageRedemption[]
 
+  @@index([clinicId])
   @@index([startAt])
   @@index([patientId])
   @@index([professionalId, startAt])
@@ -235,6 +277,8 @@ model Photo {
 
 model ConsentTemplate {
   id            String      @id @default(uuid()) @db.Uuid
+  clinicId      String      @map("clinic_id") @db.Uuid
+  clinic        Clinic      @relation(fields: [clinicId], references: [id])
   kind          ConsentKind @default(clinico)
   title         String
   procedureType String      @map("procedure_type")
@@ -242,6 +286,7 @@ model ConsentTemplate {
 
   consents Consent[]
 
+  @@index([clinicId])
   @@map("consent_templates")
 }
 
@@ -284,6 +329,8 @@ model Procedure {
 
 model InventoryItem {
   id         String    @id @default(uuid()) @db.Uuid
+  clinicId   String    @map("clinic_id") @db.Uuid
+  clinic     Clinic    @relation(fields: [clinicId], references: [id])
   name       String
   type       String
   unit       String
@@ -292,12 +339,15 @@ model InventoryItem {
   lotNumber  String?   @map("lot_number")
   expiryDate DateTime? @map("expiry_date") @db.Date
 
+  @@index([clinicId])
   @@index([expiryDate])
   @@map("inventory")
 }
 
 model Invoice {
   id           String        @id @default(uuid()) @db.Uuid
+  clinicId     String        @map("clinic_id") @db.Uuid
+  clinic       Clinic        @relation(fields: [clinicId], references: [id])
   number       String        @unique
   patientId    String?       @map("patient_id") @db.Uuid
   patient      Patient?      @relation(fields: [patientId], references: [id], onDelete: SetNull)
@@ -311,6 +361,7 @@ model Invoice {
   accessKey    String        @map("access_key")
   status       InvoiceStatus @default(borrador)
 
+  @@index([clinicId])
   @@index([date])
   @@index([patientId])
   @@map("invoices")
@@ -318,6 +369,8 @@ model Invoice {
 
 model Package {
   id           String  @id @default(uuid()) @db.Uuid
+  clinicId     String  @map("clinic_id") @db.Uuid
+  clinic       Clinic  @relation(fields: [clinicId], references: [id])
   serviceId    String  @map("service_id") @db.Uuid
   service      Service @relation(fields: [serviceId], references: [id])
   name         String
@@ -329,11 +382,14 @@ model Package {
 
   balances PackageBalance[]
 
+  @@index([clinicId])
   @@map("packages")
 }
 
 model PackageBalance {
   id                     String               @id @default(uuid()) @db.Uuid
+  clinicId               String               @map("clinic_id") @db.Uuid
+  clinic                 Clinic               @relation(fields: [clinicId], references: [id])
   patientId              String               @map("patient_id") @db.Uuid
   patient                Patient              @relation(fields: [patientId], references: [id], onDelete: Cascade)
   packageId              String               @map("package_id") @db.Uuid
@@ -350,6 +406,7 @@ model PackageBalance {
   payments    PackagePayment[]
   redemptions PackageRedemption[]
 
+  @@index([clinicId])
   @@index([patientId, soldAt])
   @@map("package_balances")
 }
@@ -384,6 +441,8 @@ model PackageRedemption {
 
 model Payment {
   id            String         @id @default(uuid()) @db.Uuid
+  clinicId      String         @map("clinic_id") @db.Uuid
+  clinic        Clinic         @relation(fields: [clinicId], references: [id])
   patientId     String         @map("patient_id") @db.Uuid
   patient       Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
   conceptType   PaymentConcept @map("concept_type")
@@ -399,21 +458,25 @@ model Payment {
   paidAt        DateTime?      @map("paid_at") @db.Timestamptz
   note          String?
 
+  @@index([clinicId])
   @@index([patientId])
   @@index([status, createdAt])
   @@map("payments")
 }
 
 model AuditLog {
-  id     String   @id @default(uuid()) @db.Uuid
-  userId String?  @map("user_id") @db.Uuid
-  user   User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  action String
-  cat    String
-  label  String   @default("")
-  at     DateTime @default(now()) @db.Timestamptz
-  ip     String?
+  id       String   @id @default(uuid()) @db.Uuid
+  clinicId String   @map("clinic_id") @db.Uuid
+  clinic   Clinic   @relation(fields: [clinicId], references: [id])
+  userId   String?  @map("user_id") @db.Uuid
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action   String
+  cat      String
+  label    String   @default("")
+  at       DateTime @default(now()) @db.Timestamptz
+  ip       String?
 
+  @@index([clinicId])
   @@index([at])
   @@index([userId])
   @@index([cat])

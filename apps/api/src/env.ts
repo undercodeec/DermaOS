@@ -8,6 +8,8 @@ const schema = z.object({
   UPLOAD_DIR: z.string().default("uploads"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   PORT: z.coerce.number().default(4000),
+  PLATFORM_REGISTER_KEY: z.string().min(32, "PLATFORM_REGISTER_KEY debe tener ≥ 32 chars"),
+  INVOICES_ENABLED: z.coerce.boolean().default(false),
 });
 
 export const env = schema.parse(process.env);

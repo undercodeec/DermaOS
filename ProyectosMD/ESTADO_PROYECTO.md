@@ -1,5 +1,5 @@
 # 📋 ESTADO DEL PROYECTO — DERMA-OS
-> Última actualización: 2026-06-20
+> Última actualización: 2026-06-20 (sesión tarde)
 
 ---
 
@@ -122,7 +122,7 @@ PORT=4000
 
 ---
 
-## 📊 Estado de Módulos (2026-06-20)
+## 📊 Estado de Módulos (2026-06-20 — actualizado)
 
 | Módulo | API | UI dashboard |
 |---|---|---|
@@ -138,13 +138,15 @@ PORT=4000
 | Facturas SRI | ✅ flujo borrador→autorizada | ✅ RIDE imprimible |
 | Inventario | ✅ CRUD completo + ajuste stock | ✅ tabla + editar + eliminar + delta custom |
 | Admin (usuarios/matriz/bitácora) | ✅ + reset MFA | ✅ AdminView |
+| **Multi-tenant (aislamiento por clínica)** | ✅ modelo Clinic + clinicId en 12 tablas + JWT + filtros | ✅ transparente (sin cambios de UI) |
 
 ### Pendientes
 | Item | Prioridad |
 |------|-----------|
-| Aplicar migración `add_mfa_secret` en BD (`pnpm db:migrate` + `db:seed`) | Alta — requerido para MFA |
-| Firma `.p12` + webservice SRI real | Baja — fuera de alcance demo |
+| Aplicar migración en Supabase (producción): copiar `.env.supabase` → `.env`, luego `db:migrate` + `db:seed` | Alta — antes del próximo `git push` |
+| UI para registro de nueva clínica (consume `POST /clinics/register`) | Media — backend listo |
 | Sitio comercial `apps/site` | Baja — diseño antes que código |
+| Firma `.p12` + webservice SRI real | Baja — fuera de alcance demo |
 
 ---
 
@@ -200,6 +202,39 @@ PORT=4000
 4. **Seed reducido**
    - `seed.ts` reescrito: solo 6 usuarios + 2 profesionales (FK requeridas)
    - Sin pacientes, citas, fotos, facturas ni inventario demo
+
+### 2026-06-20 — Multi-tenant por clínica
+
+1. **Modelo de tenant `Clinic`** (`schema.prisma`)
+   - Nueva tabla `clinics` (id, name, ruc, public_key, active)
+   - `clinicId` agregado a 12 tablas: users, patients, professionals, services, packages, package_balances, inventory, invoices, audit_logs, consent_templates, appointments, payments
+   - Índice `clinic_id_idx` en cada tabla; único compuesto `[clinicId, idType, idNumber]` en patients
+
+2. **Migración** (`20260620000000_add_clinic_tenant/migration.sql`)
+   - Inserta clínica demo UUID fijo `00000000-0000-4000-9000-000000000001`
+   - Agrega columnas con DEFAULT para backfill de datos existentes
+   - Elimina DEFAULT al final (nuevas filas requieren `clinicId` explícito)
+
+3. **JWT y middleware** (`lib/jwt.ts`, `middleware/auth.ts`)
+   - `TokenPayload` incluye `clinicId`
+   - `req.user` expone `clinicId` en todo el ciclo de request
+
+4. **Capa de aplicación — filtrado automático** (todas las rutas)
+   - Reads: `where: { clinicId: req.user!.clinicId, ... }`
+   - Writes: `data: { clinicId: req.user!.clinicId, ... }`
+   - Sub-recursos protegidos vía `router.param('id', ...)` en `patients.ts`
+   - Acceso por ID verificado con `findFirst({ where: { id, clinicId } })`
+
+5. **Auditoría** (`lib/audit.ts`)
+   - `auditLog.create` incluye `clinicId` → bitácora aislada por clínica
+
+6. **Registro de nueva clínica** (`routes/clinics.ts`, `POST /clinics/register`)
+   - Crea clínica + usuario admin en una transacción
+   - Devuelve JWT ya autenticado con el clinicId de la nueva clínica
+
+7. **Seed actualizado** (`prisma/seed.ts`)
+   - Crea la clínica antes que profesionales/usuarios
+   - Todos los registros llevan `clinicId: ID.clinic`
 
 ---
 
