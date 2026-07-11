@@ -55,11 +55,13 @@ const newPackageSchema = z.object({
 router.post("/", requireModule("paquetes", "write"), async (req, res, next) => {
   try {
     const b = newPackageSchema.parse(req.body);
+    const svc = await prisma.service.findFirst({ where: { id: b.serviceId, clinicId: req.user!.clinicId } });
+    if (!svc) throw notFound("Servicio no encontrado");
     const pk = await prisma.package.create({
       data: {
         clinicId: req.user!.clinicId,
         name: b.name,
-        serviceId: b.serviceId,
+        serviceId: svc.id,
         sessions: b.sessions,
         price: b.price,
         intervalDays: b.intervalDays,
@@ -84,6 +86,10 @@ router.patch("/:id", requireModule("paquetes", "write"), async (req, res, next) 
     });
     if (!cur) throw notFound("Paquete no encontrado");
     const b = editPackageSchema.parse(req.body);
+    if (b.serviceId && b.serviceId !== cur.serviceId) {
+      const svc = await prisma.service.findFirst({ where: { id: b.serviceId, clinicId: req.user!.clinicId } });
+      if (!svc) throw notFound("Servicio no encontrado");
+    }
     const pk = await prisma.package.update({
       where: { id: cur.id },
       data: {

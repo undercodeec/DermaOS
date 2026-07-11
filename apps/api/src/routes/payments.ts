@@ -82,6 +82,12 @@ const createSchema = z.object({
 router.post("/", requireModule("pagos", "write"), async (req, res, next) => {
   try {
     const b = createSchema.parse(req.body);
+    const pat = await prisma.patient.findFirst({ where: { id: b.patientId, clinicId: req.user!.clinicId } });
+    if (!pat) throw badRequest("Paciente no encontrado");
+    if (b.conceptType === "paquete" && b.conceptRefId) {
+      const bal = await prisma.packageBalance.findFirst({ where: { id: b.conceptRefId, clinicId: req.user!.clinicId } });
+      if (!bal) throw badRequest("Bono no encontrado");
+    }
     const { link, txId } = genPayphone();
     const created = await prisma.payment.create({
       data: {

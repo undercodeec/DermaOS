@@ -93,10 +93,14 @@ const createSchema = z.object({
 router.post("/", requireModule("agenda", "write"), async (req, res, next) => {
   try {
     const b = createSchema.parse(req.body);
-    const svc = await prisma.service.findFirst({
-      where: { id: b.serviceId, clinicId: req.user!.clinicId },
-    });
+    const [svc, pat, prof] = await Promise.all([
+      prisma.service.findFirst({ where: { id: b.serviceId, clinicId: req.user!.clinicId } }),
+      prisma.patient.findFirst({ where: { id: b.patientId, clinicId: req.user!.clinicId } }),
+      prisma.professional.findFirst({ where: { id: b.professionalId, clinicId: req.user!.clinicId } }),
+    ]);
     if (!svc) throw notFound("Servicio no encontrado");
+    if (!pat) throw notFound("Paciente no encontrado");
+    if (!prof) throw notFound("Profesional no encontrado");
     const start = new Date(b.startAt);
     const end = b.endAt
       ? new Date(b.endAt)
