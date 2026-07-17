@@ -114,6 +114,8 @@ PORT=4000
 | `JWT_SECRET` | Auto-generado por Render |
 | `JWT_EXPIRES_IN` | `12h` |
 | `CORS_ORIGIN` | `https://dermasos.netlify.app` |
+| `PAYPHONE_CREDENTIAL_KEY` | Clave fuerte para cifrar tokens Payphone por clínica |
+| `PAYPHONE_API_BASE` | `https://pay.payphonetodoesposible.com/api` |
 
 ### Dashboard en Netlify
 | Variable | Valor |
@@ -134,7 +136,7 @@ PORT=4000
 | Consentimientos | ✅ | ✅ crear + firma canvas |
 | Paquetes/bonos | ✅ catálogo + venta + consumo auto | ✅ venta + abonos + historial |
 | Agenda | ✅ + cobertura paquete | ✅ semanal + estados + nueva cita |
-| Cobros / PayPhone | ✅ + conciliación paquetes | ✅ generar + detalle |
+| Cobros / PayPhone | ✅ credenciales por clínica + API Link + webhook | ✅ generar + detalle + config admin |
 | Facturas SRI | ✅ flujo borrador→autorizada | ✅ RIDE imprimible |
 | Inventario | ✅ CRUD completo + ajuste stock | ✅ tabla + editar + eliminar + delta custom |
 | Admin (usuarios/matriz/bitácora) | ✅ + reset MFA | ✅ AdminView |
@@ -145,6 +147,9 @@ PORT=4000
 |------|-----------|
 | Aplicar migración en Supabase (producción): copiar `.env.supabase` → `.env`, luego `db:migrate` + `db:seed` | Alta — antes del próximo `git push` |
 | UI para registro de nueva clínica (consume `POST /clinics/register`) | Media — backend listo |
+| Solicitar a Payphone activación de Notificación Externa para el webhook `/payments/payphone/NotificacionPago` | Alta — requerida para conciliación automática real |
+| Validación operativa con credenciales Payphone reales por clínica antes de `git push` | Alta — evita volver a links simulados |
+| Evaluar Token de terceros / comercio aliado Payphone cuando el SaaS tenga varias clínicas | Media — reduce fricción de onboarding |
 | Sitio comercial `apps/site` | Baja — diseño antes que código |
 | Firma `.p12` + webservice SRI real | Baja — fuera de alcance demo |
 
@@ -235,6 +240,38 @@ PORT=4000
 7. **Seed actualizado** (`prisma/seed.ts`)
    - Crea la clínica antes que profesionales/usuarios
    - Todos los registros llevan `clinicId: ID.clinic`
+
+### 2026-07-17 — Payphone real por clínica (modelo pragmático)
+
+1. **Credenciales Payphone aisladas por clínica**
+   - Nueva tabla `clinic_payment_providers`
+   - Relación 1:1 con `Clinic` mediante `clinicId`
+   - Modo inicial `manual`: cada clínica ingresa su `storeId` y token Payphone Business/API
+   - Token cifrado en backend con AES-256-GCM (`PAYPHONE_CREDENTIAL_KEY` o `JWT_SECRET`)
+   - No existe token Payphone global ni compartido entre clínicas
+
+2. **Panel Admin**
+   - `GET /admin/payphone` devuelve estado seguro de configuración sin exponer token
+   - `PUT /admin/payphone` guarda RUC, Store ID, token y estado activo/desactivado
+   - UI agregada en Sistema → Payphone por clínica
+
+3. **Cobros con API Link**
+   - `POST /payments` ya no genera links simulados
+   - Antes de cobrar, el backend carga credenciales por `req.user.clinicId`
+   - Llama a `POST https://pay.payphonetodoesposible.com/api/Links`
+   - Guarda `clientTransactionId`, `payphoneStoreId`, `providerStatus` y `providerPayload`
+   - Si la clínica no configuró Payphone, la API rechaza el cobro con error claro
+
+4. **Webhook de conciliación**
+   - Nuevo endpoint público: `POST /payments/payphone/NotificacionPago`
+   - Valida `StoreId`, `ClientTransactionId`, estado aprobado y monto en centavos
+   - Marca el cobro como `pagado`
+   - Si el cobro corresponde a paquete, registra el abono automáticamente
+   - Idempotente: si el cobro ya está pagado, responde exitosamente sin duplicar abonos
+
+5. **Ruta futura**
+   - Mantener `mode = manual` para salir rápido a producción
+   - Migrar luego a Token de terceros / comercio aliado Payphone para onboarding SaaS sin copiar credenciales manualmente
 
 ---
 

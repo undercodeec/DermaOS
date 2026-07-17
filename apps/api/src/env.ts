@@ -10,6 +10,8 @@ const schema = z.object({
   PORT: z.coerce.number().default(4000),
   PLATFORM_REGISTER_KEY: z.string().min(32, "PLATFORM_REGISTER_KEY debe tener ≥ 32 chars"),
   INVOICES_ENABLED: z.coerce.boolean().default(false),
+  PAYPHONE_CREDENTIAL_KEY: z.string().min(32).optional(),
+  PAYPHONE_API_BASE: z.string().url().default("https://pay.payphonetodoesposible.com/api"),
 });
 
 export const env = schema.parse(process.env);

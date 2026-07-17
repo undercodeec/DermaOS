@@ -229,6 +229,10 @@ export interface Payment {
   status: PaymentStatus;
   payphoneLink: string | null;
   txId: string | null;
+  clientTransactionId?: string | null;
+  payphoneStoreId?: string | null;
+  payphoneTransactionId?: string | null;
+  providerStatus?: string | null;
   sentVia: "whatsapp" | "email" | null;
   createdAt: string;
   paidAt: string | null;

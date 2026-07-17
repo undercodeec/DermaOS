@@ -109,6 +109,7 @@ model Clinic {
   consentTemplates ConsentTemplate[]
   appointments     Appointment[]
   payments         Payment[]
+  paymentProvider  ClinicPaymentProvider?
 
   @@map("clinics")
 }
@@ -453,6 +454,11 @@ model Payment {
   status        PaymentStatus  @default(pendiente)
   payphoneLink  String?        @map("payphone_link")
   txId          String?        @map("tx_id")
+  clientTransactionId String?   @unique @map("client_transaction_id")
+  payphoneStoreId     String?   @map("payphone_store_id")
+  payphoneTransactionId String? @map("payphone_transaction_id")
+  providerStatus      String?   @map("provider_status")
+  providerPayload     Json?     @map("provider_payload")
   sentVia       String?        @map("sent_via")
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz
   paidAt        DateTime?      @map("paid_at") @db.Timestamptz
@@ -461,7 +467,27 @@ model Payment {
   @@index([clinicId])
   @@index([patientId])
   @@index([status, createdAt])
+  @@index([payphoneStoreId])
   @@map("payments")
+}
+
+model ClinicPaymentProvider {
+  id              String    @id @default(uuid()) @db.Uuid
+  clinicId        String    @unique @map("clinic_id") @db.Uuid
+  clinic          Clinic    @relation(fields: [clinicId], references: [id])
+  provider        String    @default("payphone")
+  mode            String    @default("manual")
+  ruc             String?
+  storeId         String    @map("store_id")
+  tokenEncrypted  String    @map("token_encrypted")
+  status          String    @default("active")
+  lastVerifiedAt  DateTime? @map("last_verified_at") @db.Timestamptz
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([clinicId])
+  @@index([provider, status])
+  @@map("clinic_payment_providers")
 }
 
 model AuditLog {

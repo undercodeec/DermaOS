@@ -24,6 +24,25 @@ export interface AuditLogEntry {
   user: { fullName: string; role: Role } | null;
 }
 
+export interface PayphoneConfig {
+  configured: boolean;
+  provider: "payphone";
+  mode: "manual";
+  ruc: string;
+  storeId: string;
+  status: "missing" | "active" | "disabled";
+  hasToken: boolean;
+  lastVerifiedAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface SavePayphoneConfigInput {
+  ruc?: string | null;
+  storeId: string;
+  token?: string;
+  status: "active" | "disabled";
+}
+
 export function listUsers(): Promise<AdminUser[]> {
   return api.get<AdminUser[]>("/admin/users");
 }
@@ -49,4 +68,12 @@ export function listAuditLogs(filter: AuditFilter = {}): Promise<AuditLogEntry[]
   });
   const q = qs.toString();
   return api.get<AuditLogEntry[]>(`/admin/audit-logs${q ? `?${q}` : ""}`);
+}
+
+export function getPayphoneConfig(): Promise<PayphoneConfig> {
+  return api.get<PayphoneConfig>("/admin/payphone");
+}
+
+export function savePayphoneConfig(input: SavePayphoneConfigInput): Promise<PayphoneConfig> {
+  return api.put<PayphoneConfig>("/admin/payphone", input);
 }

@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Badge, EmptyState, NoAccess, PageHead } from "@/components/Primitives";
+import { Badge, Btn, EmptyState, Field, NoAccess, PageHead } from "@/components/Primitives";
 import { Icon } from "@/components/icons";
 import { fmtDate, fmtTime } from "@/lib/helpers";
 import { useAuth } from "@/lib/auth";
 import { PERM, ROLES } from "@/lib/permissions";
 import type { ModuleId } from "@/lib/permissions";
 import type { Role } from "@/lib/types";
-import { listAuditLogs, listUsers, patchUser } from "./api";
-import type { AdminUser } from "./api";
+import { getPayphoneConfig, listAuditLogs, listUsers, patchUser, savePayphoneConfig } from "./api";
+import type { AdminUser, PayphoneConfig } from "./api";
 
 const MODULES: { id: ModuleId; label: string }[] = [
   { id: "agenda", label: "Agenda" },
@@ -71,6 +71,8 @@ function AdminPanel() {
   return (
     <div className="content-inner">
       <PageHead title="Sistema" sub="Usuarios y roles · matriz de permisos · bitácora de auditoría" />
+
+      <PayphoneSettings />
 
       <p className="card-title" style={{ marginBottom: 12 }}>
         Usuarios
@@ -193,6 +195,102 @@ function AdminPanel() {
         )}
       </div>
     </div>
+  );
+}
+
+function PayphoneSettings() {
+  const qc = useQueryClient();
+  const [ruc, setRuc] = useState("");
+  const [storeId, setStoreId] = useState("");
+  const [token, setToken] = useState("");
+  const [status, setStatus] = useState<"active" | "disabled">("active");
+  const [msg, setMsg] = useState("");
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["admin-payphone"],
+    queryFn: getPayphoneConfig,
+  });
+
+  useEffect(() => {
+    if (!data) return;
+    setRuc(data.ruc ?? "");
+    setStoreId(data.storeId ?? "");
+    setStatus(data.status === "disabled" ? "disabled" : "active");
+  }, [data]);
+
+  const mut = useMutation({
+    mutationFn: () =>
+      savePayphoneConfig({
+        ruc: ruc.trim() || null,
+        storeId: storeId.trim(),
+        token: token.trim() || undefined,
+        status,
+      }),
+    onSuccess: () => {
+      setToken("");
+      setMsg("Credenciales Payphone guardadas.");
+      qc.invalidateQueries({ queryKey: ["admin-payphone"] });
+      setTimeout(() => setMsg(""), 2600);
+    },
+    onError: (e: Error) => setMsg(e.message),
+  });
+
+  const configured = (data as PayphoneConfig | undefined)?.configured;
+  const canSave = storeId.trim().length > 0 && (configured || token.trim().length > 0);
+
+  return (
+    <>
+      <p className="card-title" style={{ marginBottom: 12 }}>
+        Payphone por clínica
+      </p>
+      <div className="card" style={{ marginBottom: 28 }}>
+        {isLoading ? (
+          <EmptyState icon="card">Cargando configuración Payphone…</EmptyState>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <Field label="RUC del comercio">
+              <input value={ruc} onChange={(e) => setRuc(e.target.value)} placeholder="179..." />
+            </Field>
+            <Field label="Store ID">
+              <input value={storeId} onChange={(e) => setStoreId(e.target.value)} placeholder="Store ID de Payphone" />
+            </Field>
+            <Field label={configured ? "Nuevo token (opcional)" : "Token Payphone"}>
+              <input
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                type="password"
+                placeholder={configured ? "Dejar vacío para conservar el token actual" : "Bearer token"}
+              />
+            </Field>
+            <Field label="Estado">
+              <select value={status} onChange={(e) => setStatus(e.target.value as "active" | "disabled")}>
+                <option value="active">Activo</option>
+                <option value="disabled">Desactivado</option>
+              </select>
+            </Field>
+            <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 10 }}>
+              <Badge cls={configured && status === "active" ? "bg-ok" : "bg-neutral"}>
+                {configured ? `Configurado · ${data?.hasToken ? "token guardado" : "sin token"}` : "No configurado"}
+              </Badge>
+              {data?.updatedAt ? (
+                <span className="muted" style={{ fontSize: 12.5 }}>
+                  Actualizado {fmtDate(data.updatedAt)} · {fmtTime(data.updatedAt)}
+                </span>
+              ) : null}
+              <div style={{ flex: 1 }} />
+              <Btn kind="primary" icon="check" disabled={!canSave || mut.isPending} onClick={() => mut.mutate()}>
+                {mut.isPending ? "Guardando…" : "Guardar Payphone"}
+              </Btn>
+            </div>
+            {msg ? (
+              <p style={{ gridColumn: "1 / -1", margin: 0, color: msg.includes("guardadas") ? "var(--ok)" : "var(--err)" }}>
+                {msg}
+              </p>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 

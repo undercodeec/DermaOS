@@ -18,6 +18,7 @@ const ID = {
 async function main() {
   console.log("[seed] limpiando datos previos…");
   await prisma.auditLog.deleteMany();
+  await prisma.clinicPaymentProvider.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.packageRedemption.deleteMany();
   await prisma.packagePayment.deleteMany();

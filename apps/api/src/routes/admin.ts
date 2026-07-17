@@ -3,10 +3,94 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
-import { notFound } from "../lib/errors.js";
+import { badRequest, notFound } from "../lib/errors.js";
+import { encryptSecret } from "../lib/secret-box.js";
 
 const router = Router();
 router.use(requireAuth, requireRole("admin"));
+
+function serializePayphoneProvider(p: Awaited<ReturnType<typeof prisma.clinicPaymentProvider.findFirst>>) {
+  if (!p) {
+    return {
+      configured: false,
+      provider: "payphone",
+      mode: "manual",
+      ruc: "",
+      storeId: "",
+      status: "missing",
+      hasToken: false,
+      lastVerifiedAt: null,
+      updatedAt: null,
+    };
+  }
+  return {
+    configured: true,
+    provider: p.provider,
+    mode: p.mode,
+    ruc: p.ruc ?? "",
+    storeId: p.storeId,
+    status: p.status,
+    hasToken: true,
+    lastVerifiedAt: p.lastVerifiedAt?.toISOString() ?? null,
+    updatedAt: p.updatedAt.toISOString(),
+  };
+}
+
+router.get("/payphone", async (req, res, next) => {
+  try {
+    const provider = await prisma.clinicPaymentProvider.findFirst({
+      where: { clinicId: req.user!.clinicId, provider: "payphone" },
+    });
+    res.json(serializePayphoneProvider(provider));
+  } catch (e) {
+    next(e);
+  }
+});
+
+const payphoneSchema = z.object({
+  ruc: z.string().trim().optional().nullable(),
+  storeId: z.string().trim().min(1),
+  token: z.string().trim().min(1).optional(),
+  status: z.enum(["active", "disabled"]).default("active"),
+});
+
+router.put("/payphone", async (req, res, next) => {
+  try {
+    const b = payphoneSchema.parse(req.body);
+    const cur = await prisma.clinicPaymentProvider.findFirst({
+      where: { clinicId: req.user!.clinicId, provider: "payphone" },
+    });
+    if (!cur && !b.token) {
+      throw badRequest("Token Payphone requerido para la primera configuracion");
+    }
+    const data = {
+      ruc: b.ruc || null,
+      storeId: b.storeId,
+      status: b.status,
+      mode: "manual",
+    };
+    const provider = cur
+      ? await prisma.clinicPaymentProvider.update({
+          where: { id: cur.id },
+          data: {
+            ...data,
+            ...(b.token ? { tokenEncrypted: encryptSecret(b.token) } : {}),
+          },
+        })
+      : await prisma.clinicPaymentProvider.create({
+          data: {
+            clinicId: req.user!.clinicId,
+            provider: "payphone",
+            tokenEncrypted: encryptSecret(b.token!),
+            ...data,
+          },
+        });
+    await audit(req, "Actualizo credenciales Payphone", "sistema", `storeId ${provider.storeId}`);
+    res.json(serializePayphoneProvider(provider));
+  } catch (e) {
+    next(e);
+  }
+});
 
 router.get("/users", async (req, res, next) => {
   try {
