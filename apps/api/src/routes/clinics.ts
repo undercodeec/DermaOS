@@ -5,6 +5,7 @@ import { prisma } from "../db.js";
 import { signToken } from "../lib/jwt.js";
 import { conflict } from "../lib/errors.js";
 import { requirePlatformKey } from "../middleware/platformKey.js";
+import { ALL_MODULES } from "../lib/entitlements.js";
 
 const router = Router();
 
@@ -39,6 +40,13 @@ router.post("/register", requirePlatformKey, async (req, res, next) => {
           role:         "admin",
           mfaEnabled:   false,
           active:       true,
+        },
+      });
+      await tx.clinicSubscription.create({
+        data: {
+          clinicId: clinic.id,
+          status: "pending_verification",
+          allowedModules: ALL_MODULES,
         },
       });
       return { clinic, user };

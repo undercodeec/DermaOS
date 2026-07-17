@@ -80,39 +80,42 @@ router.post("/payphone/NotificacionPago", async (req, res) => {
     const expected = Math.round(Number(payment.amount) * 100);
     if (expected !== b.Amount) return res.json({ Response: false, ErrorCode: "444" });
 
-    if (payment.status !== "pagado") {
-      await prisma.$transaction(async (tx) => {
-        await tx.payment.update({
-          where: { id: payment.id },
-          data: {
-            status: "pagado",
-            paidAt: new Date(),
-            payphoneTransactionId: b.TransactionId ? String(b.TransactionId) : null,
-            providerStatus: "approved",
-            providerPayload: JSON.parse(JSON.stringify(b)) as Prisma.InputJsonObject,
-          },
-        });
-        if (payment.conceptType === "paquete" && payment.conceptRefId) {
-          await tx.packagePayment.create({
-            data: {
-              balanceId: payment.conceptRefId,
-              amount: payment.amount,
-              method: "payphone",
-              note: "Pago Payphone notificado automaticamente",
-            },
-          });
-        }
-        await tx.auditLog.create({
-          data: {
-            clinicId: provider.clinicId,
-            userId: null,
-            action: "Conciliacion automatica Payphone",
-            cat: "pagos",
-            label: `${payment.clientTransactionId ?? payment.id} · $${Number(payment.amount).toFixed(2)}`,
-          },
-        });
+    if (payment.status === "pagado") return res.json({ Response: true, ErrorCode: "000" });
+    if (payment.status !== "pendiente") return res.json({ Response: true, ErrorCode: "000" });
+
+    await prisma.$transaction(async (tx) => {
+      const claimed = await tx.payment.updateMany({
+        where: { id: payment.id, status: "pendiente" },
+        data: {
+          status: "pagado",
+          paidAt: new Date(),
+          payphoneTransactionId: b.TransactionId ? String(b.TransactionId) : null,
+          providerStatus: "approved",
+          providerPayload: JSON.parse(JSON.stringify(b)) as Prisma.InputJsonObject,
+        },
       });
-    }
+      if (claimed.count !== 1) return;
+
+      if (payment.conceptType === "paquete" && payment.conceptRefId) {
+        await tx.packagePayment.create({
+          data: {
+            balanceId: payment.conceptRefId,
+            amount: payment.amount,
+            method: "payphone",
+            note: "Pago Payphone notificado automaticamente",
+          },
+        });
+      }
+      await tx.auditLog.create({
+        data: {
+          clinicId: provider.clinicId,
+          userId: null,
+          action: "Conciliacion automatica Payphone",
+          cat: "pagos",
+          label: `${payment.clientTransactionId ?? payment.id} - $${Number(payment.amount).toFixed(2)}`,
+        },
+      });
+    });
 
     return res.json({ Response: true, ErrorCode: "000" });
   } catch {

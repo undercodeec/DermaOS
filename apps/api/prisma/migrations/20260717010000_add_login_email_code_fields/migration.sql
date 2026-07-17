@@ -1,0 +1,2 @@
+-- No-op migration.
+-- The email login code flow reuses the existing users.mfa_secret column.

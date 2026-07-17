@@ -184,4 +184,4 @@ ALTER TABLE "patients" ALTER COLUMN "clinic_id" DROP DEFAULT;
 | Gestión de leads | Inexistente |
 | Riesgo si se agrega una 2a clínica sin cambios | **CRÍTICO** — fuga total de datos entre clínicas |
 
-El proyecto está en un estado limpio para iniciar la migración: el schema es coherente, el seed es controlado (solo 6 usuarios + 2 profesionales) y no hay datos demo que compliquen el backfill. El costo de implementar multi-tenancy ahora es significativamente menor que hacerlo después de tener datos reales de múltiples clínicas.
+El proyecto está en un estado limpio para operar multi-tenant: el schema es coherente y el seed actual no crea clínicas, usuarios, profesionales ni datos demo. El primer tenant debe crearse por flujo controlado de registro de clínica o administración de plataforma.

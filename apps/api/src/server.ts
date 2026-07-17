@@ -16,6 +16,7 @@ import appointmentsRouter from "./routes/appointments.js";
 import paymentsRouter from "./routes/payments.js";
 // import invoicesRouter from "./routes/invoices.js"; // INVOICES_ENABLED
 import adminRouter from "./routes/admin.js";
+import platformRouter from "./routes/platform.js";
 
 const app = express();
 
@@ -52,6 +53,7 @@ app.use("/appointments", appointmentsRouter);
 app.use("/payments", paymentsRouter);
 // app.use("/invoices", invoicesRouter); // INVOICES_ENABLED — pendiente integración SRI
 app.use("/admin", adminRouter);
+app.use("/platform", platformRouter);
 app.use("/", catalogRouter);
 
 app.use(errorHandler);

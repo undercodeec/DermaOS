@@ -110,6 +110,8 @@ model Clinic {
   appointments     Appointment[]
   payments         Payment[]
   paymentProvider  ClinicPaymentProvider?
+  subscription     ClinicSubscription?
+  subscriptionPayments PlatformSubscriptionPayment[]
 
   @@map("clinics")
 }
@@ -488,6 +490,49 @@ model ClinicPaymentProvider {
   @@index([clinicId])
   @@index([provider, status])
   @@map("clinic_payment_providers")
+}
+
+model ClinicSubscription {
+  id                 String    @id @default(uuid()) @db.Uuid
+  clinicId           String    @unique @map("clinic_id") @db.Uuid
+  clinic             Clinic    @relation(fields: [clinicId], references: [id])
+  status             String    @default("pending_verification")
+  verifiedAt         DateTime? @map("verified_at") @db.Timestamptz
+  trialStartedAt     DateTime? @map("trial_started_at") @db.Timestamptz
+  trialEndsAt        DateTime? @map("trial_ends_at") @db.Timestamptz
+  subscriptionEndsAt DateTime? @map("subscription_ends_at") @db.Timestamptz
+  allowedModules     String[]  @default([]) @map("allowed_modules")
+  notes              String?
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([clinicId])
+  @@index([status])
+  @@index([trialEndsAt])
+  @@index([subscriptionEndsAt])
+  @@map("clinic_subscriptions")
+}
+
+model PlatformSubscriptionPayment {
+  id                    String   @id @default(uuid()) @db.Uuid
+  clinicId              String   @map("clinic_id") @db.Uuid
+  clinic                Clinic   @relation(fields: [clinicId], references: [id])
+  amount                Decimal  @db.Decimal(10, 2)
+  months                Int      @default(1)
+  status                String   @default("pendiente")
+  payphoneLink          String?  @map("payphone_link")
+  clientTransactionId   String?  @unique @map("client_transaction_id")
+  payphoneStoreId       String?  @map("payphone_store_id")
+  payphoneTransactionId String?  @map("payphone_transaction_id")
+  providerPayload       Json?    @map("provider_payload")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
+  paidAt                DateTime? @map("paid_at") @db.Timestamptz
+  note                  String?
+
+  @@index([clinicId])
+  @@index([status, createdAt])
+  @@index([payphoneStoreId])
+  @@map("platform_subscription_payments")
 }
 
 model AuditLog {

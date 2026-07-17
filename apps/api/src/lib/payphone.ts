@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import crypto from "node:crypto";
 import { env } from "../env.js";
 import { badRequest } from "./errors.js";
 
@@ -19,9 +20,7 @@ function cents(value: number) {
 }
 
 export function newClientTransactionId() {
-  const stamp = Date.now().toString(36);
-  const rand = Math.random().toString(36).slice(2, 7);
-  return `${stamp}${rand}`.slice(0, 15);
+  return crypto.randomBytes(12).toString("base64url").slice(0, 15);
 }
 
 function asPayload(value: unknown): Prisma.InputJsonObject {

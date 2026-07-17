@@ -3,6 +3,7 @@ import type { Role } from "@prisma/client";
 import { verifyToken } from "../lib/jwt.js";
 import { unauthorized, forbidden } from "../lib/errors.js";
 import { roleCan, roleCanWrite, type ModuleId } from "../lib/permissions.js";
+import { requireClinicModuleAccess } from "../lib/entitlements.js";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -35,10 +36,15 @@ export function requireRole(...roles: Role[]) {
 }
 
 export function requireModule(mod: ModuleId, mode: "read" | "write" = "read") {
-  return (req: Request, _res: Response, next: NextFunction) => {
+  return async (req: Request, _res: Response, next: NextFunction) => {
     if (!req.user) return next(unauthorized());
     const ok = mode === "write" ? roleCanWrite(req.user.role, mod) : roleCan(req.user.role, mod);
     if (!ok) return next(forbidden(`Sin permiso para ${mod}`));
-    next();
+    try {
+      await requireClinicModuleAccess(req.user.clinicId, mod);
+      next();
+    } catch (e) {
+      next(e);
+    }
   };
 }

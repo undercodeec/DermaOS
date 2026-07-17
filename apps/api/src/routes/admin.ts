@@ -1,13 +1,14 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { requireAuth, requireModule, requireRole } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
 import { badRequest, notFound } from "../lib/errors.js";
 import { encryptSecret } from "../lib/secret-box.js";
 
 const router = Router();
 router.use(requireAuth, requireRole("admin"));
+router.use(requireModule("sistema"));
 
 function serializePayphoneProvider(p: Awaited<ReturnType<typeof prisma.clinicPaymentProvider.findFirst>>) {
   if (!p) {

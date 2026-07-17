@@ -15,6 +15,7 @@ import { PaymentsView } from "@/features/payments/PaymentsView";
 import { BillingView } from "@/features/billing/BillingView";
 import { AdminView } from "@/features/admin/AdminView";
 import { StubView } from "@/features/_stubs/StubView";
+import { PlatformView } from "@/features/platform/PlatformView";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -57,9 +58,10 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AuthProvider>
-          <Shell />
-        </AuthProvider>
+        <Routes>
+          <Route path="/platform" element={<PlatformView />} />
+          <Route path="/*" element={<AuthProvider><Shell /></AuthProvider>} />
+        </Routes>
       </BrowserRouter>
     </QueryClientProvider>
   );
