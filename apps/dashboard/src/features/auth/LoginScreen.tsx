@@ -1,62 +1,91 @@
 import { useState, type FormEvent } from "react";
-import { Icon } from "@/components/icons";
 import { Btn, Field } from "@/components/Primitives";
 import { useAuth } from "@/lib/auth";
+import brandImage from "@/img/DermaOS.png";
 
 type Step =
   | { kind: "credentials" }
-  | { kind: "mfa" }
-  | { kind: "mfa-setup"; secret: string; otpauthUrl: string };
+  | { kind: "register" }
+  | { kind: "register-code"; emailMasked?: string }
+  | { kind: "email-code"; emailMasked?: string };
+
+const initialRegister = {
+  clinicName: "",
+  ruc: "",
+  adminName: "",
+  adminEmail: "",
+  adminPassword: "",
+};
 
 export function LoginScreen() {
-  const { signIn, verifyMfaSetup } = useAuth();
+  const { signIn, signUp, verifyRegistration } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [totp, setTotp] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [register, setRegister] = useState(initialRegister);
   const [step, setStep] = useState<Step>({ kind: "credentials" });
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const submitCreds = async (e: FormEvent) => {
-    e.preventDefault();
+  const openRegister = () => {
+    setStep({ kind: "register" });
+    setErr(null);
+  };
+
+  const resetToCreds = () => {
+    setStep({ kind: "credentials" });
+    setEmailCode("");
+    setErr(null);
+  };
+
+  const submitCreds = async (e?: FormEvent) => {
+    e?.preventDefault();
     setBusy(true);
     setErr(null);
     const r = await signIn(email, password);
     setBusy(false);
     if (r.ok) return;
-    if ("mfaRequired" in r) {
-      setStep({ kind: "mfa" });
-    } else if ("mfaSetup" in r) {
-      setStep({ kind: "mfa-setup", secret: r.secret, otpauthUrl: r.otpauthUrl });
+    if ("emailVerificationRequired" in r) {
+      setStep({ kind: "email-code", emailMasked: r.emailMasked });
+      setEmailCode("");
     } else {
       setErr(r.error);
     }
   };
 
-  const submitMfa = async (e: FormEvent) => {
+  const submitEmailCode = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setErr(null);
-    const r = await signIn(email, password, totp);
+    const r = await signIn(email, password, emailCode);
     setBusy(false);
     if (r.ok) return;
     if ("error" in r) setErr(r.error);
   };
 
-  const submitSetup = async (e: FormEvent) => {
+  const submitRegister = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setErr(null);
-    const r = await verifyMfaSetup(email, password, totp);
+    const r = await signUp(register);
+    setBusy(false);
+    if (r.ok) return;
+    if ("emailVerificationRequired" in r) {
+      setStep({ kind: "register-code", emailMasked: r.emailMasked });
+      setEmailCode("");
+    } else {
+      setErr(r.error);
+    }
+  };
+
+  const submitRegisterCode = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setErr(null);
+    const r = await verifyRegistration(register.adminEmail, emailCode);
     setBusy(false);
     if (r.ok) return;
     if ("error" in r) setErr(r.error);
-  };
-
-  const resetToCreds = () => {
-    setStep({ kind: "credentials" });
-    setTotp("");
-    setErr(null);
   };
 
   return (
@@ -64,30 +93,25 @@ export function LoginScreen() {
       <section
         className="login-brand"
         style={{
-          background: "linear-gradient(140deg, #00AC9A 0%, #008B7B 55%, #0D3330 100%)",
-          color: "#fff",
-          display: "flex",
-          alignItems: "center",
+          padding: 0,
+          overflow: "hidden",
         }}
       >
-        <div className="login-brand-inner">
-          <Icon name="stetho" size={36} />
-          <h1>DERMA-OS · Plataforma del centro dermatológico</h1>
-          <p>
-            Historia clínica, agenda, paquetes, cobros Payphone y facturación SRI
-            en un solo lugar. Acceso por rol con auditoría y cifrado de fotos.
-          </p>
-        </div>
+        <img
+          src={brandImage}
+          alt="DERMA-OS"
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        />
       </section>
       <section className="login-pane">
         <div className="login-card">
           {step.kind === "credentials" ? (
             <>
-              <h2>Iniciar sesión</h2>
+              <h2>Iniciar sesion</h2>
               <p className="muted">Use sus credenciales del centro para continuar.</p>
               <form onSubmit={submitCreds}>
                 {err ? <div className="login-error">{err}</div> : null}
-                <Field label="Correo electrónico">
+                <Field label="Correo electronico">
                   <input
                     type="email"
                     autoComplete="email"
@@ -97,7 +121,7 @@ export function LoginScreen() {
                     required
                   />
                 </Field>
-                <Field label="Contraseña">
+                <Field label="Contrasena">
                   <input
                     type="password"
                     autoComplete="current-password"
@@ -114,31 +138,111 @@ export function LoginScreen() {
                   disabled={busy}
                   style={{ width: "100%", justifyContent: "center" }}
                 >
-                  {busy ? "Verificando…" : "Entrar"}
+                  {busy ? "Verificando..." : "Entrar"}
                 </Btn>
               </form>
+              <p className="login-switch">
+                Aun no tienes una cuenta registrada?{" "}
+                <button type="button" className="login-link" onClick={openRegister}>
+                  Registrate
+                </button>
+              </p>
               <div className="login-help">
                 Usuarios Demo:
                 <br />
-                <code>admin@dermapielypelo.ec</code>  contraseña común <code>derma123</code>.
+                <code>admin@prueba.local</code> contrasena comun <code>Password123</code>.
               </div>
             </>
-          ) : step.kind === "mfa" ? (
+          ) : null}
+
+          {step.kind === "register" ? (
             <>
-              <h2>Verificación en 2 pasos</h2>
-              <p className="muted">
-                Introduzca el código de 6 dígitos de su aplicación autenticadora.
-              </p>
-              <form onSubmit={submitMfa}>
+              <h2>Registro de usuario</h2>
+              <p className="muted">Cree la cuenta principal de su clinica con el mismo acceso al sistema.</p>
+              <form onSubmit={submitRegister}>
                 {err ? <div className="login-error">{err}</div> : null}
-                <Field label="Código TOTP">
+                <Field label="Nombre de la clinica">
+                  <input
+                    value={register.clinicName}
+                    onChange={(e) => setRegister((s) => ({ ...s, clinicName: e.target.value }))}
+                    placeholder="Clinica Dermapiel"
+                    required
+                  />
+                </Field>
+                <Field label="RUC (opcional)">
+                  <input
+                    value={register.ruc}
+                    onChange={(e) => setRegister((s) => ({ ...s, ruc: e.target.value }))}
+                    placeholder="1790012345001"
+                  />
+                </Field>
+                <Field label="Nombre del administrador">
+                  <input
+                    value={register.adminName}
+                    onChange={(e) => setRegister((s) => ({ ...s, adminName: e.target.value }))}
+                    placeholder="Dra. Maria Perez"
+                    required
+                  />
+                </Field>
+                <Field label="Correo electronico">
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    value={register.adminEmail}
+                    onChange={(e) => setRegister((s) => ({ ...s, adminEmail: e.target.value }))}
+                    placeholder="admin@clinica.com"
+                    required
+                  />
+                </Field>
+                <Field label="Contrasena">
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    value={register.adminPassword}
+                    onChange={(e) => setRegister((s) => ({ ...s, adminPassword: e.target.value }))}
+                    placeholder="Minimo 8 caracteres"
+                    required
+                  />
+                </Field>
+                <Btn
+                  type="submit"
+                  kind="primary"
+                  icon="check"
+                  disabled={busy}
+                  style={{ width: "100%", justifyContent: "center" }}
+                >
+                  {busy ? "Creando cuenta..." : "Crear cuenta"}
+                </Btn>
+                <Btn
+                  type="button"
+                  kind="ghost"
+                  onClick={resetToCreds}
+                  style={{ width: "100%", justifyContent: "center", marginTop: 8 }}
+                >
+                  Volver a iniciar sesion
+                </Btn>
+              </form>
+            </>
+          ) : null}
+
+          {step.kind === "register-code" ? (
+            <>
+              <h2>Verifica tu correo</h2>
+              <p className="muted">
+                Enviamos un codigo de 6 digitos a <strong>{step.emailMasked ?? register.adminEmail}</strong>.
+                Al validarlo se activara tu demo de 7 dias.
+              </p>
+              <form onSubmit={submitRegisterCode}>
+                {err ? <div className="login-error">{err}</div> : null}
+                <Field label="Codigo de verificacion">
                   <input
                     inputMode="numeric"
                     pattern="\d{6}"
                     maxLength={6}
                     autoFocus
-                    value={totp}
-                    onChange={(e) => setTotp(e.target.value.replace(/\D/g, ""))}
+                    value={emailCode}
+                    onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, ""))}
                     placeholder="123456"
                     style={{ fontSize: 22, letterSpacing: 6, textAlign: "center" }}
                     required
@@ -148,56 +252,39 @@ export function LoginScreen() {
                   type="submit"
                   kind="primary"
                   icon="check"
-                  disabled={busy || totp.length !== 6}
+                  disabled={busy || emailCode.length !== 6}
                   style={{ width: "100%", justifyContent: "center" }}
                 >
-                  {busy ? "Verificando…" : "Verificar"}
+                  {busy ? "Activando demo..." : "Verificar y entrar"}
                 </Btn>
-                <Btn kind="ghost" onClick={resetToCreds} style={{ width: "100%", justifyContent: "center", marginTop: 8 }}>
+                <Btn
+                  type="button"
+                  kind="ghost"
+                  onClick={resetToCreds}
+                  style={{ width: "100%", justifyContent: "center", marginTop: 8 }}
+                >
                   Volver
                 </Btn>
               </form>
             </>
-          ) : (
+          ) : null}
+
+          {step.kind === "email-code" ? (
             <>
-              <h2>Configurar MFA</h2>
-              <p className="muted" style={{ fontSize: 13 }}>
-                Su rol exige MFA. Escanee el QR con Google Authenticator, Authy o 1Password
-                y confirme con el primer código.
+              <h2>Verificacion por correo</h2>
+              <p className="muted">
+                Introduzca el codigo de 6 digitos enviado a <strong>{step.emailMasked ?? email}</strong>.
               </p>
-              {err ? <div className="login-error">{err}</div> : null}
-              <div
-                style={{
-                  background: "var(--bg-subtle)",
-                  border: "1px solid var(--border-strong)",
-                  borderRadius: 8,
-                  padding: 12,
-                  marginBottom: 12,
-                  textAlign: "center",
-                }}
-              >
-                <img
-                  alt="QR MFA"
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
-                    step.otpauthUrl,
-                  )}`}
-                  width={180}
-                  height={180}
-                  style={{ display: "block", margin: "0 auto" }}
-                />
-                <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-                  Clave manual: <code style={{ fontFamily: "monospace" }}>{step.secret}</code>
-                </p>
-              </div>
-              <form onSubmit={submitSetup}>
-                <Field label="Primer código TOTP">
+              <form onSubmit={submitEmailCode}>
+                {err ? <div className="login-error">{err}</div> : null}
+                <Field label="Codigo de verificacion">
                   <input
                     inputMode="numeric"
                     pattern="\d{6}"
                     maxLength={6}
                     autoFocus
-                    value={totp}
-                    onChange={(e) => setTotp(e.target.value.replace(/\D/g, ""))}
+                    value={emailCode}
+                    onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, ""))}
                     placeholder="123456"
                     style={{ fontSize: 22, letterSpacing: 6, textAlign: "center" }}
                     required
@@ -207,14 +294,30 @@ export function LoginScreen() {
                   type="submit"
                   kind="primary"
                   icon="check"
-                  disabled={busy || totp.length !== 6}
+                  disabled={busy || emailCode.length !== 6}
                   style={{ width: "100%", justifyContent: "center" }}
                 >
-                  {busy ? "Verificando…" : "Activar MFA y entrar"}
+                  {busy ? "Verificando..." : "Verificar y entrar"}
+                </Btn>
+                <Btn
+                  type="button"
+                  kind="ghost"
+                  onClick={() => void submitCreds()}
+                  style={{ width: "100%", justifyContent: "center", marginTop: 8 }}
+                >
+                  Reenviar codigo
+                </Btn>
+                <Btn
+                  type="button"
+                  kind="ghost"
+                  onClick={resetToCreds}
+                  style={{ width: "100%", justifyContent: "center", marginTop: 8 }}
+                >
+                  Volver
                 </Btn>
               </form>
             </>
-          )}
+          ) : null}
         </div>
       </section>
     </div>

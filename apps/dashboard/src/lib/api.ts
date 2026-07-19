@@ -13,10 +13,10 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
-  opts: { raw?: boolean } = {},
+  opts: { raw?: boolean; headers?: Record<string, string> } = {},
 ): Promise<T> {
   const token = localStorage.getItem(TOKEN_KEY);
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...(opts.headers ?? {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined && !(body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
@@ -43,12 +43,12 @@ async function request<T>(
 }
 
 export const api = {
-  get:   <T>(path: string) => request<T>("GET",    path),
-  post:  <T>(path: string, body?: unknown) => request<T>("POST",   path, body),
-  put:   <T>(path: string, body?: unknown) => request<T>("PUT",    path, body),
-  patch: <T>(path: string, body?: unknown) => request<T>("PATCH",  path, body),
-  del:   <T>(path: string) => request<T>("DELETE", path),
-  raw:   (path: string)    => request<Response>("GET", path, undefined, { raw: true }),
+  get:   <T>(path: string, opts?: { headers?: Record<string, string> }) => request<T>("GET",    path, undefined, opts),
+  post:  <T>(path: string, body?: unknown, opts?: { headers?: Record<string, string> }) => request<T>("POST",   path, body, opts),
+  put:   <T>(path: string, body?: unknown, opts?: { headers?: Record<string, string> }) => request<T>("PUT",    path, body, opts),
+  patch: <T>(path: string, body?: unknown, opts?: { headers?: Record<string, string> }) => request<T>("PATCH",  path, body, opts),
+  del:   <T>(path: string, opts?: { headers?: Record<string, string> }) => request<T>("DELETE", path, undefined, opts),
+  raw:   (path: string, opts?: { headers?: Record<string, string> }) => request<Response>("GET", path, undefined, { raw: true, ...opts }),
 };
 
 export function getToken(): string | null {

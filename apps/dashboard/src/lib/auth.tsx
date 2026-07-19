@@ -5,23 +5,44 @@ import type { Profile } from "./types";
 export type LoginOutcome =
   | { ok: true }
   | { ok: false; error: string }
-  | { ok: false; mfaRequired: true }
-  | { ok: false; mfaSetup: true; secret: string; otpauthUrl: string };
+  | { ok: false; emailVerificationRequired: true; emailMasked?: string };
+
+export type RegisterOutcome =
+  | { ok: true }
+  | { ok: false; emailVerificationRequired: true; emailMasked?: string }
+  | { ok: false; error: string };
 
 interface LoginResponse {
   token?: string;
   profile?: Profile;
-  mfaRequired?: boolean;
-  mfaSetup?: boolean;
-  secret?: string;
-  otpauthUrl?: string;
+  emailVerificationRequired?: boolean;
+  emailMasked?: string;
+}
+
+interface RegisterResponse {
+  token?: string;
+  profile?: Profile;
+  emailVerificationRequired?: boolean;
+  emailMasked?: string;
+}
+
+interface VerifyRegistrationResponse {
+  token: string;
+  profile: Profile;
 }
 
 interface AuthState {
   profile: Profile | null;
   loading: boolean;
-  signIn: (email: string, password: string, totpCode?: string) => Promise<LoginOutcome>;
-  verifyMfaSetup: (email: string, password: string, totpCode: string) => Promise<LoginOutcome>;
+  signIn: (email: string, password: string, emailCode?: string) => Promise<LoginOutcome>;
+  signUp: (input: {
+    clinicName: string;
+    ruc?: string;
+    adminName: string;
+    adminEmail: string;
+    adminPassword: string;
+  }) => Promise<RegisterOutcome>;
+  verifyRegistration: (adminEmail: string, emailCode: string) => Promise<LoginOutcome>;
   signOut: () => Promise<void>;
 }
 
@@ -53,15 +74,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signIn = async (email: string, password: string, totpCode?: string): Promise<LoginOutcome> => {
+  const signIn = async (email: string, password: string, emailCode?: string): Promise<LoginOutcome> => {
     try {
       const body: Record<string, string> = { email, password };
-      if (totpCode) body.totpCode = totpCode;
+      if (emailCode) body.emailCode = emailCode;
       const r = await api.post<LoginResponse>("/auth/login", body);
-      if (r.mfaSetup && r.secret && r.otpauthUrl) {
-        return { ok: false, mfaSetup: true, secret: r.secret, otpauthUrl: r.otpauthUrl };
+      if (r.emailVerificationRequired) {
+        return { ok: false, emailVerificationRequired: true, emailMasked: r.emailMasked };
       }
-      if (r.mfaRequired) return { ok: false, mfaRequired: true };
       if (r.token && r.profile) {
         setToken(r.token);
         setProfile(r.profile);
@@ -73,16 +93,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const verifyMfaSetup = async (email: string, password: string, totpCode: string): Promise<LoginOutcome> => {
+  const signUp = async (input: {
+    clinicName: string;
+    ruc?: string;
+    adminName: string;
+    adminEmail: string;
+    adminPassword: string;
+  }): Promise<RegisterOutcome> => {
     try {
-      const r = await api.post<LoginResponse>("/auth/mfa/verify-setup", { email, password, totpCode });
-      if (r.token && r.profile) {
-        setToken(r.token);
-        setProfile(r.profile);
+      const payload = {
+        clinicName: input.clinicName,
+        ruc: input.ruc?.trim() || undefined,
+        adminName: input.adminName,
+        adminEmail: input.adminEmail,
+        adminPassword: input.adminPassword,
+      };
+      const registered = await api.post<RegisterResponse>("/clinics/register", payload);
+      if (registered.token && registered.profile) {
+        setToken(registered.token);
+        setProfile(registered.profile);
         return { ok: true };
       }
-      return { ok: false, error: "Respuesta inesperada" };
+      if (registered.emailVerificationRequired) {
+        return { ok: false, emailVerificationRequired: true, emailMasked: registered.emailMasked };
+      }
+      return { ok: false, error: "Respuesta inesperada del servidor" };
     } catch (e) {
+      return { ok: false, error: e instanceof ApiError ? e.message : "Error de red" };
+    }
+  };
+
+  const verifyRegistration = async (adminEmail: string, emailCode: string): Promise<LoginOutcome> => {
+    try {
+      const r = await api.post<VerifyRegistrationResponse>("/clinics/verify-email", { adminEmail, emailCode });
+      setToken(r.token);
+      setProfile(r.profile);
+      return { ok: true };
+    } catch (e) {
+      clearToken();
+      setProfile(null);
       return { ok: false, error: e instanceof ApiError ? e.message : "Error de red" };
     }
   };
@@ -98,7 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ profile, loading, signIn, verifyMfaSetup, signOut }}>
+    <AuthContext.Provider value={{ profile, loading, signIn, signUp, verifyRegistration, signOut }}>
       {children}
     </AuthContext.Provider>
   );

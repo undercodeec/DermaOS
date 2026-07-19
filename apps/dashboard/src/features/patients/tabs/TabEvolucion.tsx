@@ -94,6 +94,15 @@ export function TabEvolucion({ patient, role }: TabProps) {
                     <span>{r.plan}</span>
                   </div>
                 ) : null}
+                {r.prescription?.clinicalMetrics ? (
+                  <div className="metric-pill-row">
+                    <span>Severidad {r.prescription.clinicalMetrics.severity}</span>
+                    <span>Dolor {r.prescription.clinicalMetrics.pain}</span>
+                    <span>Prurito {r.prescription.clinicalMetrics.pruritus}</span>
+                    <span>Inflamacion {r.prescription.clinicalMetrics.inflammation}</span>
+                    <span>Satisfaccion {r.prescription.clinicalMetrics.satisfaction}</span>
+                  </div>
+                ) : null}
                 {canWrite ? (
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 8 }}>
                     <Btn sm kind="ghost" icon="pen" onClick={() => setEdit(r)}>

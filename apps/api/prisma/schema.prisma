@@ -96,6 +96,7 @@ model Clinic {
   publicKey String?  @unique @map("public_key")
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  invoiceSequence Int @default(242) @map("invoice_sequence")
 
   users            User[]
   patients         Patient[]
@@ -351,7 +352,7 @@ model Invoice {
   id           String        @id @default(uuid()) @db.Uuid
   clinicId     String        @map("clinic_id") @db.Uuid
   clinic       Clinic        @relation(fields: [clinicId], references: [id])
-  number       String        @unique
+  number       String
   patientId    String?       @map("patient_id") @db.Uuid
   patient      Patient?      @relation(fields: [patientId], references: [id], onDelete: SetNull)
   customerName String?       @map("customer_name")
@@ -365,6 +366,7 @@ model Invoice {
   status       InvoiceStatus @default(borrador)
 
   @@index([clinicId])
+  @@unique([clinicId, number])
   @@index([date])
   @@index([patientId])
   @@map("invoices")
@@ -418,6 +420,8 @@ model PackagePayment {
   id        String   @id @default(uuid()) @db.Uuid
   balanceId String   @map("balance_id") @db.Uuid
   balance   PackageBalance @relation(fields: [balanceId], references: [id], onDelete: Cascade)
+  paymentId String?  @unique @map("payment_id") @db.Uuid
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
   amount    Decimal  @db.Decimal(10, 2)
   method    String
   at        DateTime @default(now()) @db.Timestamptz
@@ -432,7 +436,7 @@ model PackageRedemption {
   balanceId       String        @map("balance_id") @db.Uuid
   balance         PackageBalance @relation(fields: [balanceId], references: [id], onDelete: Cascade)
   at              DateTime      @default(now()) @db.Timestamptz
-  appointmentId   String?       @map("appointment_id") @db.Uuid
+  appointmentId   String?       @unique @map("appointment_id") @db.Uuid
   appointment     Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
   professionalId  String?       @map("professional_id") @db.Uuid
   professional    Professional? @relation(fields: [professionalId], references: [id])
@@ -466,10 +470,13 @@ model Payment {
   paidAt        DateTime?      @map("paid_at") @db.Timestamptz
   note          String?
 
+  packagePayment PackagePayment?
+
   @@index([clinicId])
   @@index([patientId])
   @@index([status, createdAt])
   @@index([payphoneStoreId])
+  @@unique([payphoneStoreId, payphoneTransactionId])
   @@map("payments")
 }
 
@@ -532,6 +539,7 @@ model PlatformSubscriptionPayment {
   @@index([clinicId])
   @@index([status, createdAt])
   @@index([payphoneStoreId])
+  @@unique([payphoneStoreId, payphoneTransactionId])
   @@map("platform_subscription_payments")
 }
 

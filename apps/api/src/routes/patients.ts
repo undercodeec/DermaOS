@@ -2,10 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
+import { env } from "../env.js";
 import { requireAuth, requireModule } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
-import { calcInvoiceTotals, nextInvoiceNumber, sriAccessKey, EMISOR_RUC } from "../lib/sri.js";
+import { calcInvoiceTotals, invoiceNumber, sriAccessKey } from "../lib/sri.js";
 
 const router = Router();
 router.use(requireAuth, requireModule("pacientes"));
@@ -23,6 +24,24 @@ router.param("id", async (req, _res, next, id) => {
     next(e);
   }
 });
+
+async function ensureProfessionalForClinic(professionalId: string, clinicId: string) {
+  const professional = await prisma.professional.findFirst({
+    where: { id: professionalId, clinicId },
+    select: { id: true },
+  });
+  if (!professional) throw badRequest("Profesional no valido para esta clinica");
+  return professional;
+}
+
+async function ensureServiceForClinic(serviceId: string, clinicId: string) {
+  const service = await prisma.service.findFirst({
+    where: { id: serviceId, clinicId },
+    select: { id: true },
+  });
+  if (!service) throw badRequest("Servicio no valido para esta clinica");
+  return service;
+}
 
 const backgroundSchema = z.object({
   skinType: z.enum(["I", "II", "III", "IV", "V", "VI"]),
@@ -146,12 +165,20 @@ const newEvolucionSchema = z.object({
   assessment: z.string().min(1),
   plan: z.string().min(1),
   cie10Codes: z.array(z.string()).default([]),
+  clinicalMetrics: z.object({
+    severity: z.number().min(0).max(10),
+    pain: z.number().min(0).max(10),
+    pruritus: z.number().min(0).max(10),
+    inflammation: z.number().min(0).max(10),
+    satisfaction: z.number().min(0).max(10),
+  }).optional(),
 });
 router.post("/:id/evolucion", requireModule("historia", "write"), async (req, res, next) => {
   try {
     const pat = await prisma.patient.findUnique({ where: { id: req.params.id } });
     if (!pat) throw notFound("Paciente no encontrado");
     const body = newEvolucionSchema.parse(req.body);
+    await ensureProfessionalForClinic(body.professionalId, req.user!.clinicId);
     const r = await prisma.clinicalRecord.create({
       data: {
         patientId: pat.id,
@@ -163,6 +190,7 @@ router.post("/:id/evolucion", requireModule("historia", "write"), async (req, re
         assessment: body.assessment,
         plan: body.plan,
         cie10Codes: body.cie10Codes,
+        prescription: body.clinicalMetrics ? { clinicalMetrics: body.clinicalMetrics } as Prisma.InputJsonValue : undefined,
       },
       include: { professional: { select: { id: true, name: true } } },
     });
@@ -179,6 +207,9 @@ router.patch("/:id/evolucion/:rid", requireModule("historia", "write"), async (r
     const cur = await prisma.clinicalRecord.findUnique({ where: { id: req.params.rid } });
     if (!cur || cur.patientId !== req.params.id || cur.type !== "evolucion") throw notFound("Evolución no encontrada");
     const body = updEvolucionSchema.parse(req.body);
+    if (body.professionalId) {
+      await ensureProfessionalForClinic(body.professionalId, req.user!.clinicId);
+    }
     const r = await prisma.clinicalRecord.update({
       where: { id: cur.id },
       data: {
@@ -188,6 +219,7 @@ router.patch("/:id/evolucion/:rid", requireModule("historia", "write"), async (r
         ...(body.assessment !== undefined ? { assessment: body.assessment } : {}),
         ...(body.plan !== undefined ? { plan: body.plan } : {}),
         ...(body.cie10Codes ? { cie10Codes: body.cie10Codes } : {}),
+        ...(body.clinicalMetrics ? { prescription: { clinicalMetrics: body.clinicalMetrics } as Prisma.InputJsonValue } : {}),
       },
       include: { professional: { select: { id: true, name: true } } },
     });
@@ -242,6 +274,7 @@ router.post("/:id/recetas", requireModule("historia", "write"), async (req, res,
     const pat = await prisma.patient.findUnique({ where: { id: req.params.id } });
     if (!pat) throw notFound("Paciente no encontrado");
     const body = newRecetaSchema.parse(req.body);
+    await ensureProfessionalForClinic(body.professionalId, req.user!.clinicId);
     const r = await prisma.clinicalRecord.create({
       data: {
         patientId: pat.id,
@@ -268,6 +301,9 @@ router.patch("/:id/recetas/:rid", requireModule("historia", "write"), async (req
     const cur = await prisma.clinicalRecord.findUnique({ where: { id: req.params.rid } });
     if (!cur || cur.patientId !== req.params.id || cur.type !== "receta") throw notFound("Receta no encontrada");
     const body = updRecetaSchema.parse(req.body);
+    if (body.professionalId) {
+      await ensureProfessionalForClinic(body.professionalId, req.user!.clinicId);
+    }
     const prev = (cur.prescription as { templateId?: string; items: unknown[] } | null) ?? { items: [] };
     const r = await prisma.clinicalRecord.update({
       where: { id: cur.id },
@@ -367,6 +403,8 @@ router.post("/:id/procedures", requireModule("procedimientos", "write"), async (
     const consent = await prisma.consent.findUnique({ where: { id: body.consentId } });
     if (!consent || consent.patientId !== pat.id) throw badRequest("Consentimiento no pertenece al paciente");
     if (consent.status !== "firmado") throw conflict("El consentimiento no está firmado");
+    await ensureServiceForClinic(body.serviceId, req.user!.clinicId);
+    await ensureProfessionalForClinic(body.professionalId, req.user!.clinicId);
     const pr = await prisma.procedure.create({
       data: {
         patientId: pat.id,
@@ -420,40 +458,47 @@ router.post("/:id/balances", requireModule("paquetes", "write"), async (req, res
       where: { id: body.packageId, clinicId: req.user!.clinicId },
     });
     if (!pk || !pk.active) throw badRequest("Paquete no disponible");
+    if (body.sellerProfessionalId) {
+      await ensureProfessionalForClinic(body.sellerProfessionalId, req.user!.clinicId);
+    }
 
     const soldAt = new Date();
     const vencimiento = new Date(Date.now() + (pk.validityDays || 365) * 864e5);
-    const bal = await prisma.packageBalance.create({
-      data: {
-        clinicId: req.user!.clinicId,
-        patientId: pat.id,
-        packageId: pk.id,
-        soldAt,
-        sellerProfessionalId: body.sellerProfessionalId ?? null,
-        sessionsTotal: pk.sessions,
-        sessionsUsed: 0,
-        price: pk.price,
-        vencimiento,
-        status: "activo",
-      },
-      include: { package: true, payments: { select: { amount: true } } },
-    });
-    if (body.initialPayment && body.initialPayment > 0) {
-      await prisma.packagePayment.create({
+    if (body.initialPayment && body.initialPayment > Number(pk.price)) {
+      throw badRequest("El abono inicial no puede superar el precio del paquete");
+    }
+    const bal = await prisma.$transaction(async (tx) => {
+      const created = await tx.packageBalance.create({
         data: {
-          balanceId: bal.id,
-          amount: body.initialPayment,
-          method: body.method ?? "efectivo",
-          note: body.note ?? "Abono inicial",
+          clinicId: req.user!.clinicId,
+          patientId: pat.id,
+          packageId: pk.id,
+          soldAt,
+          sellerProfessionalId: body.sellerProfessionalId ?? null,
+          sessionsTotal: pk.sessions,
+          sessionsUsed: 0,
+          price: pk.price,
+          vencimiento,
+          status: "activo",
         },
       });
-    }
-    await audit(req, "Vendió paquete", "paquetes", `${pk.name} · ${pat.firstName} ${pat.lastName}`);
-    const fresh = await prisma.packageBalance.findUnique({
-      where: { id: bal.id },
-      include: { package: true, payments: { select: { amount: true } } },
+      if (body.initialPayment && body.initialPayment > 0) {
+        await tx.packagePayment.create({
+          data: {
+            balanceId: created.id,
+            amount: body.initialPayment,
+            method: body.method ?? "efectivo",
+            note: body.note ?? "Abono inicial",
+          },
+        });
+      }
+      return tx.packageBalance.findUniqueOrThrow({
+        where: { id: created.id },
+        include: { package: true, payments: { select: { amount: true } } },
+      });
     });
-    res.status(201).json(fresh);
+    await audit(req, "Vendió paquete", "paquetes", `${pk.name} · ${pat.firstName} ${pat.lastName}`);
+    res.status(201).json(bal);
   } catch (e) {
     next(e);
   }
@@ -462,6 +507,7 @@ router.post("/:id/balances", requireModule("paquetes", "write"), async (req, res
 // ----- Invoices -----
 router.get("/:id/invoices", async (req, res, next) => {
   try {
+    if (!env.INVOICES_ENABLED) throw notFound("Facturacion no habilitada");
     const list = await prisma.invoice.findMany({
       where: { patientId: req.params.id, clinicId: req.user!.clinicId },
       orderBy: { date: "desc" },
@@ -477,7 +523,7 @@ const invoiceLineSchema = z.object({
   description: z.string().min(1),
   quantity: z.number().int().positive(),
   unitPrice: z.number().nonnegative(),
-  vatRate: z.number().int(),
+  vatRate: z.union([z.literal(0), z.literal(15)]),
 });
 const newInvoiceSchema = z.object({
   customerName: z.string().optional(),
@@ -485,34 +531,57 @@ const newInvoiceSchema = z.object({
 });
 router.post("/:id/invoices", requireModule("facturacion", "write"), async (req, res, next) => {
   try {
+    if (!env.INVOICES_ENABLED) throw notFound("Facturacion no habilitada");
     const pat = await prisma.patient.findUnique({ where: { id: req.params.id } });
     if (!pat) throw notFound("Paciente no encontrado");
     const body = newInvoiceSchema.parse(req.body);
 
-    const t = calcInvoiceTotals(body.lines);
-    const last = await prisma.invoice.findFirst({
-      where: { clinicId: req.user!.clinicId },
-      orderBy: { number: "desc" },
-      select: { number: true },
+    const serviceIds = [...new Set(body.lines.map((line) => line.serviceId))];
+    const services = await prisma.service.findMany({
+      where: { id: { in: serviceIds }, clinicId: req.user!.clinicId, active: true },
+      select: { id: true, name: true, price: true, vatRate: true },
     });
-    const { seq, number } = nextInvoiceNumber(last?.number ?? null);
-    const date = new Date();
-    const accessKey = sriAccessKey(date, seq, EMISOR_RUC);
-    const inv = await prisma.invoice.create({
-      data: {
-        clinicId: req.user!.clinicId,
-        number,
-        patientId: pat.id,
-        customerName: body.customerName ?? `${pat.firstName} ${pat.lastName}`,
-        date,
-        lines: body.lines as unknown as Prisma.InputJsonValue,
-        subtotal0: t.subtotal0,
-        subtotal15: t.subtotal15,
-        vatAmount: t.vatAmount,
-        total: t.total,
-        accessKey,
-        status: "generada",
-      },
+    if (services.length !== serviceIds.length) throw badRequest("Uno o mas servicios no pertenecen a la clinica");
+    const byId = new Map(services.map((service) => [service.id, service]));
+    const lines = body.lines.map((line) => {
+      const service = byId.get(line.serviceId)!;
+      return {
+        serviceId: service.id,
+        description: service.name,
+        quantity: line.quantity,
+        unitPrice: Number(service.price),
+        vatRate: service.vatRate,
+      };
+    });
+    const t = calcInvoiceTotals(lines);
+    const inv = await prisma.$transaction(async (tx) => {
+      const clinic = await tx.clinic.findUnique({
+        where: { id: req.user!.clinicId },
+        select: { ruc: true },
+      });
+      if (!clinic?.ruc || !/^\d{13}$/.test(clinic.ruc)) throw badRequest("Configura un RUC valido para facturar");
+      const sequence = await tx.clinic.update({
+        where: { id: req.user!.clinicId },
+        data: { invoiceSequence: { increment: 1 } },
+        select: { invoiceSequence: true },
+      });
+      const date = new Date();
+      return tx.invoice.create({
+        data: {
+          clinicId: req.user!.clinicId,
+          number: invoiceNumber(sequence.invoiceSequence),
+          patientId: pat.id,
+          customerName: body.customerName ?? `${pat.firstName} ${pat.lastName}`,
+          date,
+          lines: lines as unknown as Prisma.InputJsonValue,
+          subtotal0: t.subtotal0,
+          subtotal15: t.subtotal15,
+          vatAmount: t.vatAmount,
+          total: t.total,
+          accessKey: sriAccessKey(date, sequence.invoiceSequence, clinic.ruc),
+          status: "generada",
+        },
+      });
     });
     await audit(req, "Emitió factura electrónica", "facturacion", `Factura ${inv.number}`);
     res.status(201).json(inv);

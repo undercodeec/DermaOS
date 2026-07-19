@@ -1,43 +1,21 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Modal } from "@/components/Modal";
 import { Badge, Btn, EmptyState, Field, NoAccess, PageHead } from "@/components/Primitives";
 import { Icon } from "@/components/icons";
 import { fmtDate, fmtTime } from "@/lib/helpers";
 import { useAuth } from "@/lib/auth";
-import { PERM, ROLES } from "@/lib/permissions";
-import type { ModuleId } from "@/lib/permissions";
-import type { Role } from "@/lib/types";
-import { getPayphoneConfig, listAuditLogs, listUsers, patchUser, savePayphoneConfig } from "./api";
-import type { AdminUser, PayphoneConfig } from "./api";
-
-const MODULES: { id: ModuleId; label: string }[] = [
-  { id: "agenda", label: "Agenda" },
-  { id: "pacientes", label: "Pacientes" },
-  { id: "historia", label: "Historia clínica" },
-  { id: "fotos", label: "Fotos" },
-  { id: "consentimientos", label: "Consentimientos" },
-  { id: "procedimientos", label: "Procedimientos" },
-  { id: "paquetes", label: "Paquetes" },
-  { id: "pagos", label: "Cobros" },
-  { id: "facturacion", label: "Facturación" },
-  { id: "inventario", label: "Inventario" },
-  { id: "servicios", label: "Servicios" },
-  { id: "reportes", label: "Reportes" },
-  { id: "sistema", label: "Sistema" },
-];
-
-const AUDIT_CATS = [
-  { id: "", label: "Todas" },
-  { id: "sesion", label: "Sesión" },
-  { id: "historia", label: "Historia" },
-  { id: "fotos", label: "Fotos" },
-  { id: "consentimiento", label: "Consentimientos" },
-  { id: "facturacion", label: "Facturación" },
-  { id: "paquetes", label: "Paquetes" },
-  { id: "pagos", label: "Pagos" },
-  { id: "agenda", label: "Agenda" },
-  { id: "sistema", label: "Sistema" },
-];
+import { ROLES } from "@/lib/permissions";
+import type { Professional, Role } from "@/lib/types";
+import {
+  createUser,
+  getPayphoneConfig,
+  listAdminProfessionals,
+  listUsers,
+  patchUser,
+  savePayphoneConfig,
+} from "./api";
+import type { AdminUser, NewAdminUserInput, PayphoneConfig, UpdateAdminUserInput } from "./api";
 
 export function AdminView() {
   const { profile } = useAuth();
@@ -49,37 +27,52 @@ export function AdminView() {
 }
 
 function AdminPanel() {
-  const qc = useQueryClient();
-  const [auditCat, setAuditCat] = useState("");
+  const [openCreate, setOpenCreate] = useState(false);
 
+  return (
+    <div className="content-inner">
+      <PageHead title="Sistema" sub="Usuarios y roles">
+        <Btn kind="primary" icon="plus" onClick={() => setOpenCreate(true)}>
+          Nuevo usuario
+        </Btn>
+      </PageHead>
+
+      <PayphoneSettings />
+      <UsersSection />
+
+      {openCreate ? <CreateUserModal onClose={() => setOpenCreate(false)} /> : null}
+    </div>
+  );
+}
+
+function UsersSection() {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState<AdminUser | null>(null);
   const { data: users = [], isLoading: loadingUsers } = useQuery({
     queryKey: ["admin-users"],
     queryFn: listUsers,
   });
 
-  const { data: logs = [], isLoading: loadingLogs } = useQuery({
-    queryKey: ["admin-audit", auditCat],
-    queryFn: () => listAuditLogs({ cat: auditCat || undefined }),
-  });
-
   const mut = useMutation({
     mutationFn: ({ id, input }: { id: string; input: Parameters<typeof patchUser>[1] }) =>
       patchUser(id, input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-professionals"] });
+      qc.invalidateQueries({ queryKey: ["professionals"] });
+    },
   });
 
   return (
-    <div className="content-inner">
-      <PageHead title="Sistema" sub="Usuarios y roles · matriz de permisos · bitácora de auditoría" />
-
-      <PayphoneSettings />
-
+    <>
       <p className="card-title" style={{ marginBottom: 12 }}>
         Usuarios
       </p>
       <div className="card" style={{ marginBottom: 28 }}>
         {loadingUsers ? (
           <EmptyState icon="user">Cargando usuarios…</EmptyState>
+        ) : users.length === 0 ? (
+          <EmptyState icon="user">Todavia no hay usuarios creados en esta clinica.</EmptyState>
         ) : (
           <table className="tbl">
             <thead>
@@ -87,114 +80,27 @@ function AdminPanel() {
                 <th>Usuario</th>
                 <th>Email</th>
                 <th>Rol</th>
-                <th>MFA</th>
+                <th>Email login</th>
                 <th>Estado</th>
-                <th>Último acceso</th>
+                <th>Ultimo acceso</th>
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {users.map((u) => (
-                <UserRow key={u.id} user={u} onPatch={(input) => mut.mutate({ id: u.id, input })} />
+                <UserRow
+                  key={u.id}
+                  user={u}
+                  onEdit={() => setEditing(u)}
+                  onPatch={(input) => mut.mutate({ id: u.id, input })}
+                />
               ))}
             </tbody>
           </table>
         )}
       </div>
-
-      <p className="card-title" style={{ marginBottom: 12 }}>
-        Matriz de permisos
-      </p>
-      <div className="card" style={{ overflow: "auto", marginBottom: 28 }}>
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>Módulo</th>
-              {(Object.keys(ROLES) as Role[]).map((r) => (
-                <th key={r}>{ROLES[r].short}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {MODULES.map((m) => (
-              <tr key={m.id}>
-                <td><strong>{m.label}</strong></td>
-                {(Object.keys(ROLES) as Role[]).map((r) => (
-                  <td key={r} style={{ fontSize: 12.5 }}>
-                    {PERM[r][m.id]}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 12,
-        }}
-      >
-        <p className="card-title" style={{ margin: 0 }}>
-          Bitácora de auditoría
-        </p>
-        <select
-          value={auditCat}
-          onChange={(e) => setAuditCat(e.target.value)}
-          style={{
-            border: "1px solid var(--border-strong)",
-            borderRadius: 8,
-            padding: "8px 10px",
-            background: "#fff",
-          }}
-        >
-          {AUDIT_CATS.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="card">
-        {loadingLogs ? (
-          <EmptyState icon="lock">Cargando bitácora…</EmptyState>
-        ) : logs.length === 0 ? (
-          <EmptyState icon="lock">Sin eventos para este filtro.</EmptyState>
-        ) : (
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Cuándo</th>
-                <th>Usuario</th>
-                <th>Categoría</th>
-                <th>Acción</th>
-                <th>Detalle</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((l) => (
-                <tr key={l.id}>
-                  <td className="tnum" style={{ fontSize: 12.5 }}>
-                    {fmtDate(l.at)} · {fmtTime(l.at)}
-                  </td>
-                  <td>
-                    {l.user ? l.user.fullName : <span className="muted">—</span>}
-                  </td>
-                  <td>
-                    <Badge cls="bg-neutral">{l.cat}</Badge>
-                  </td>
-                  <td>{l.action}</td>
-                  <td className="muted">{l.label || ""}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
+      {editing ? <EditUserModal user={editing} onClose={() => setEditing(null)} /> : null}
+    </>
   );
 }
 
@@ -241,11 +147,11 @@ function PayphoneSettings() {
   return (
     <>
       <p className="card-title" style={{ marginBottom: 12 }}>
-        Payphone por clínica
+        Payphone por clinica
       </p>
       <div className="card" style={{ marginBottom: 28 }}>
         {isLoading ? (
-          <EmptyState icon="card">Cargando configuración Payphone…</EmptyState>
+          <EmptyState icon="card">Cargando configuracion Payphone…</EmptyState>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <Field label="RUC del comercio">
@@ -259,7 +165,7 @@ function PayphoneSettings() {
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 type="password"
-                placeholder={configured ? "Dejar vacío para conservar el token actual" : "Bearer token"}
+                placeholder={configured ? "Dejar vacio para conservar el token actual" : "Bearer token"}
               />
             </Field>
             <Field label="Estado">
@@ -294,12 +200,330 @@ function PayphoneSettings() {
   );
 }
 
+function CreateUserModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const [f, setF] = useState<NewAdminUserInput>({
+    fullName: "",
+    email: "",
+    password: "",
+    role: "recepcion",
+    active: true,
+    mfaEnabled: false,
+    professionalId: null,
+  });
+
+  const { data: professionals = [], isLoading: loadingProfessionals } = useQuery({
+    queryKey: ["admin-professionals"],
+    queryFn: listAdminProfessionals,
+  });
+
+  const isClinicalRole = f.role === "profesional" || f.role === "esteticista";
+  const valid =
+    f.fullName.trim().length >= 2 &&
+    f.email.trim().includes("@") &&
+    f.password.length >= 8;
+
+  const m = useMutation({
+    mutationFn: () =>
+      createUser({
+        fullName: f.fullName.trim(),
+        email: f.email.trim(),
+        password: f.password,
+        role: f.role,
+        active: f.active ?? true,
+        mfaEnabled: f.mfaEnabled ?? false,
+        professionalId: isClinicalRole ? f.professionalId || null : null,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-professionals"] });
+      qc.invalidateQueries({ queryKey: ["professionals"] });
+      onClose();
+    },
+  });
+
+  const roleMeta = ROLES[f.role];
+
+  return (
+    <Modal
+      title="Nuevo usuario"
+      onClose={onClose}
+      foot={
+        <>
+          <Btn onClick={onClose}>Cancelar</Btn>
+          <Btn kind="primary" icon="check" disabled={!valid || m.isPending} onClick={() => m.mutate()}>
+            {m.isPending ? "Creando…" : "Crear usuario"}
+          </Btn>
+        </>
+      }
+    >
+      <div className="frow">
+        <Field label="Nombre completo">
+          <input
+            value={f.fullName}
+            onChange={(e) => setF({ ...f, fullName: e.target.value })}
+            placeholder="Nombre y apellido"
+          />
+        </Field>
+        <Field label="Correo electronico">
+          <input
+            type="email"
+            value={f.email}
+            onChange={(e) => setF({ ...f, email: e.target.value })}
+            placeholder="usuario@clinica.com"
+          />
+        </Field>
+      </div>
+      <div className="frow">
+        <Field label="Contrasena inicial">
+          <input
+            type="password"
+            value={f.password}
+            onChange={(e) => setF({ ...f, password: e.target.value })}
+            placeholder="Minimo 8 caracteres"
+          />
+        </Field>
+        <Field label="Rol">
+          <select
+            value={f.role}
+            onChange={(e) =>
+              setF({
+                ...f,
+                role: e.target.value as Role,
+                professionalId:
+                  e.target.value === "profesional" || e.target.value === "esteticista"
+                    ? f.professionalId
+                    : null,
+              })
+            }
+          >
+            {(Object.keys(ROLES) as Role[]).map((r) => (
+              <option key={r} value={r}>
+                {ROLES[r].label}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <p className="muted" style={{ marginTop: -2, marginBottom: 14, fontSize: 12.5 }}>
+        {roleMeta.desc}
+      </p>
+      <Field label={isClinicalRole ? "Profesional asociado (opcional)" : "Profesional asociado"}>
+        <select
+          value={f.professionalId ?? ""}
+          onChange={(e) => setF({ ...f, professionalId: e.target.value || null })}
+          disabled={!isClinicalRole || loadingProfessionals}
+        >
+          <option value="">
+            {isClinicalRole ? "Sin vinculo por ahora" : "No aplica para este rol"}
+          </option>
+          {professionals.map((p: Professional) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {isClinicalRole && professionals.length === 0 && !loadingProfessionals ? (
+        <p className="muted" style={{ marginTop: 8, fontSize: 12.5 }}>
+          No hay profesionales en catalogo. Primero crea o conserva el profesional base y luego vincula el usuario.
+        </p>
+      ) : null}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 16,
+          marginTop: 16,
+        }}
+      >
+        <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <input
+            type="checkbox"
+            checked={!!f.active}
+            onChange={(e) => setF({ ...f, active: e.target.checked })}
+          />
+          <span>Usuario activo desde hoy</span>
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <input
+            type="checkbox"
+            checked={!!f.mfaEnabled}
+            onChange={(e) => setF({ ...f, mfaEnabled: e.target.checked })}
+          />
+          <span>Requerir codigo por email al iniciar sesion</span>
+        </label>
+      </div>
+      {m.isError ? (
+        <p style={{ color: "var(--err)", fontSize: 13, marginTop: 14 }}>{(m.error as Error).message}</p>
+      ) : null}
+    </Modal>
+  );
+}
+
+function EditUserModal({ user, onClose }: { user: AdminUser; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [f, setF] = useState<UpdateAdminUserInput>({
+    fullName: user.fullName,
+    email: user.email,
+    password: "",
+    role: user.role,
+    active: user.active,
+    mfaEnabled: user.mfaEnabled,
+    professionalId: user.professionalId,
+  });
+
+  const { data: professionals = [], isLoading: loadingProfessionals } = useQuery({
+    queryKey: ["admin-professionals"],
+    queryFn: listAdminProfessionals,
+  });
+
+  const role = f.role ?? user.role;
+  const isClinicalRole = role === "profesional" || role === "esteticista";
+  const valid =
+    (f.fullName ?? "").trim().length >= 2 &&
+    (f.email ?? "").trim().includes("@") &&
+    (!f.password || f.password.length >= 8);
+
+  const m = useMutation({
+    mutationFn: () => {
+      const input: UpdateAdminUserInput = {
+        fullName: f.fullName?.trim(),
+        email: f.email?.trim(),
+        role,
+        active: f.active,
+        mfaEnabled: f.mfaEnabled,
+        professionalId: isClinicalRole ? f.professionalId || null : null,
+      };
+      if (f.password) input.password = f.password;
+      return patchUser(user.id, input);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-professionals"] });
+      qc.invalidateQueries({ queryKey: ["professionals"] });
+      onClose();
+    },
+  });
+
+  return (
+    <Modal
+      title="Editar usuario"
+      onClose={onClose}
+      foot={
+        <>
+          <Btn onClick={onClose}>Cancelar</Btn>
+          <Btn kind="primary" icon="check" disabled={!valid || m.isPending} onClick={() => m.mutate()}>
+            {m.isPending ? "Guardando..." : "Guardar cambios"}
+          </Btn>
+        </>
+      }
+    >
+      <div className="frow">
+        <Field label="Nombre completo">
+          <input
+            value={f.fullName ?? ""}
+            onChange={(e) => setF({ ...f, fullName: e.target.value })}
+            placeholder="Nombre y apellido"
+          />
+        </Field>
+        <Field label="Correo electronico">
+          <input
+            type="email"
+            value={f.email ?? ""}
+            onChange={(e) => setF({ ...f, email: e.target.value })}
+            placeholder="usuario@clinica.com"
+          />
+        </Field>
+      </div>
+      <div className="frow">
+        <Field label="Nueva contrasena (opcional)">
+          <input
+            type="password"
+            value={f.password ?? ""}
+            onChange={(e) => setF({ ...f, password: e.target.value })}
+            placeholder="Dejar vacio para no cambiar"
+          />
+        </Field>
+        <Field label="Rol">
+          <select
+            value={role}
+            onChange={(e) => {
+              const nextRole = e.target.value as Role;
+              setF({
+                ...f,
+                role: nextRole,
+                professionalId:
+                  nextRole === "profesional" || nextRole === "esteticista"
+                    ? f.professionalId ?? null
+                    : null,
+              });
+            }}
+          >
+            {(Object.keys(ROLES) as Role[]).map((r) => (
+              <option key={r} value={r}>
+                {ROLES[r].label}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <Field label={isClinicalRole ? "Profesional asociado (opcional)" : "Profesional asociado"}>
+        <select
+          value={f.professionalId ?? ""}
+          onChange={(e) => setF({ ...f, professionalId: e.target.value || null })}
+          disabled={!isClinicalRole || loadingProfessionals}
+        >
+          <option value="">
+            {isClinicalRole ? "Sin vinculo por ahora" : "No aplica para este rol"}
+          </option>
+          {professionals.map((p: Professional) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 16,
+          marginTop: 16,
+        }}
+      >
+        <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <input
+            type="checkbox"
+            checked={!!f.active}
+            onChange={(e) => setF({ ...f, active: e.target.checked })}
+          />
+          <span>Usuario activo</span>
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <input
+            type="checkbox"
+            checked={!!f.mfaEnabled}
+            onChange={(e) => setF({ ...f, mfaEnabled: e.target.checked })}
+          />
+          <span>Requerir codigo por email</span>
+        </label>
+      </div>
+      {m.isError ? (
+        <p style={{ color: "var(--err)", fontSize: 13, marginTop: 14 }}>{(m.error as Error).message}</p>
+      ) : null}
+    </Modal>
+  );
+}
+
 function UserRow({
   user,
+  onEdit,
   onPatch,
 }: {
   user: AdminUser;
-  onPatch: (input: { active?: boolean; mfaEnabled?: boolean; role?: Role }) => void;
+  onEdit: () => void;
+  onPatch: (input: UpdateAdminUserInput) => void;
 }) {
   return (
     <tr>
@@ -334,9 +558,9 @@ function UserRow({
           className={`badge ${user.mfaEnabled ? "bg-ok" : "bg-neutral"}`}
           style={{ cursor: "pointer", border: "none" }}
           onClick={() => onPatch({ mfaEnabled: !user.mfaEnabled })}
-          title="Activar / desactivar MFA"
+          title="Activar / desactivar verificacion por email"
         >
-          <Icon name="lock" size={11} /> {user.mfaEnabled ? "Activo" : "Inactivo"}
+          <Icon name="lock" size={11} /> {user.mfaEnabled ? "Requerido" : "Libre"}
         </button>
       </td>
       <td>
@@ -351,6 +575,11 @@ function UserRow({
       </td>
       <td className="tnum" style={{ fontSize: 12.5 }}>
         {user.lastAccess ? `${fmtDate(user.lastAccess)} · ${fmtTime(user.lastAccess)}` : <span className="muted">Nunca</span>}
+      </td>
+      <td>
+        <Btn sm kind="ghost" icon="pen" onClick={onEdit}>
+          Editar
+        </Btn>
       </td>
     </tr>
   );

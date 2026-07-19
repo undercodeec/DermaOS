@@ -1,9 +1,10 @@
+import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireAuth, requireModule, requireRole } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
-import { badRequest, notFound } from "../lib/errors.js";
+import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { encryptSecret } from "../lib/secret-box.js";
 
 const router = Router();
@@ -122,10 +123,75 @@ router.get("/users", async (req, res, next) => {
   }
 });
 
+const createUserSchema = z.object({
+  fullName: z.string().trim().min(2),
+  email: z.string().trim().email(),
+  password: z.string().min(8),
+  role: z.enum(["admin", "recepcion", "profesional", "esteticista", "contador"]),
+  active: z.boolean().default(true),
+  mfaEnabled: z.boolean().default(false),
+  professionalId: z.string().uuid().optional().nullable(),
+});
+
+router.post("/users", async (req, res, next) => {
+  try {
+    const b = createUserSchema.parse(req.body);
+    const email = b.email.toLowerCase();
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) throw conflict("El correo ya esta registrado");
+
+    if (b.professionalId) {
+      const professional = await prisma.professional.findFirst({
+        where: { id: b.professionalId, clinicId: req.user!.clinicId },
+        select: { id: true },
+      });
+      if (!professional) throw badRequest("Profesional no valido para esta clinica");
+    }
+
+    const passwordHash = await bcrypt.hash(b.password, 12);
+    const user = await prisma.user.create({
+      data: {
+        clinicId: req.user!.clinicId,
+        fullName: b.fullName,
+        email,
+        passwordHash,
+        role: b.role,
+        active: b.active,
+        mfaEnabled: b.mfaEnabled,
+        professionalId: b.professionalId || null,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        role: true,
+        active: true,
+        mfaEnabled: true,
+        professionalId: true,
+        lastAccess: true,
+        createdAt: true,
+      },
+    });
+
+    await audit(req, "Creo usuario", "sistema", `${user.fullName} · ${user.role}`);
+    res.status(201).json({
+      ...user,
+      lastAccess: user.lastAccess?.toISOString() ?? null,
+      createdAt: user.createdAt.toISOString(),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 const patchUserSchema = z.object({
+  fullName: z.string().trim().min(2).optional(),
+  email: z.string().trim().email().optional(),
+  password: z.string().min(8).optional(),
   active: z.boolean().optional(),
   mfaEnabled: z.boolean().optional(),
   role: z.enum(["admin", "recepcion", "profesional", "esteticista", "contador"]).optional(),
+  professionalId: z.string().uuid().optional().nullable(),
 });
 
 router.patch("/users/:id", async (req, res, next) => {
@@ -135,12 +201,42 @@ router.patch("/users/:id", async (req, res, next) => {
     });
     if (!cur) throw notFound("Usuario no encontrado");
     const b = patchUserSchema.parse(req.body);
+
+    const removesActiveAdmin = cur.role === "admin"
+      && cur.active
+      && ((b.role !== undefined && b.role !== "admin") || b.active === false);
+    if (removesActiveAdmin) {
+      const activeAdmins = await prisma.user.count({
+        where: { clinicId: req.user!.clinicId, role: "admin", active: true },
+      });
+      if (activeAdmins <= 1) throw conflict("La clinica debe conservar al menos un administrador activo");
+    }
+
+    const email = b.email?.toLowerCase();
+    if (email && email !== cur.email) {
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) throw conflict("El correo ya esta registrado");
+    }
+
+    if (b.professionalId) {
+      const professional = await prisma.professional.findFirst({
+        where: { id: b.professionalId, clinicId: req.user!.clinicId },
+        select: { id: true },
+      });
+      if (!professional) throw badRequest("Profesional no valido para esta clinica");
+    }
+
+    const passwordHash = b.password ? await bcrypt.hash(b.password, 12) : undefined;
     const u = await prisma.user.update({
       where: { id: cur.id },
       data: {
+        fullName: b.fullName ?? cur.fullName,
+        email: email ?? cur.email,
+        ...(passwordHash ? { passwordHash } : {}),
         active: b.active ?? cur.active,
         mfaEnabled: b.mfaEnabled ?? cur.mfaEnabled,
         role: b.role ?? cur.role,
+        professionalId: b.professionalId !== undefined ? b.professionalId || null : cur.professionalId,
       },
       select: {
         id: true,
@@ -156,9 +252,13 @@ router.patch("/users/:id", async (req, res, next) => {
     });
 
     const changes: string[] = [];
+    if (b.fullName && b.fullName !== cur.fullName) changes.push("nombre actualizado");
+    if (email && email !== cur.email) changes.push("email actualizado");
+    if (passwordHash) changes.push("contrasena actualizada");
     if (b.active !== undefined && b.active !== cur.active) changes.push(b.active ? "activado" : "desactivado");
     if (b.mfaEnabled !== undefined && b.mfaEnabled !== cur.mfaEnabled) changes.push(`MFA ${b.mfaEnabled ? "activado" : "desactivado"}`);
     if (b.role && b.role !== cur.role) changes.push(`rol → ${b.role}`);
+    if (b.professionalId !== undefined && b.professionalId !== cur.professionalId) changes.push("profesional actualizado");
     if (changes.length) {
       await audit(req, "Modificó permisos de usuario", "sistema", `${cur.fullName} · ${changes.join(", ")}`);
     }

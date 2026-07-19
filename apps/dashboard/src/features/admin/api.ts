@@ -1,5 +1,5 @@
 import { api } from "@/lib/api";
-import type { Role } from "@/lib/types";
+import type { Professional, Role } from "@/lib/types";
 
 export interface AdminUser {
   id: string;
@@ -47,11 +47,39 @@ export function listUsers(): Promise<AdminUser[]> {
   return api.get<AdminUser[]>("/admin/users");
 }
 
+export interface NewAdminUserInput {
+  fullName: string;
+  email: string;
+  password: string;
+  role: Role;
+  active?: boolean;
+  mfaEnabled?: boolean;
+  professionalId?: string | null;
+}
+
+export interface UpdateAdminUserInput {
+  fullName?: string;
+  email?: string;
+  password?: string;
+  role?: Role;
+  active?: boolean;
+  mfaEnabled?: boolean;
+  professionalId?: string | null;
+}
+
+export function createUser(input: NewAdminUserInput): Promise<AdminUser> {
+  return api.post<AdminUser>("/admin/users", input);
+}
+
 export function patchUser(
   id: string,
-  input: { active?: boolean; mfaEnabled?: boolean; role?: Role },
+  input: UpdateAdminUserInput,
 ): Promise<AdminUser> {
   return api.patch<AdminUser>(`/admin/users/${id}`, input);
+}
+
+export function listAdminProfessionals(): Promise<Professional[]> {
+  return api.get<Professional[]>("/professionals");
 }
 
 export interface AuditFilter {

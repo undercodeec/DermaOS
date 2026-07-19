@@ -28,9 +28,16 @@ export const WRITE_PERMS = new Set([
   "Subir/ver",
   "Gestionar",
   "Gestionar firma",
-  "Limitado",
 ]);
 export function roleCanWrite(role: Role, moduleId: ModuleId): boolean {
   const v = PERM[role]?.[moduleId];
   return !!v && WRITE_PERMS.has(v);
+}
+
+export function roleCanReconcile(role: Role, moduleId: ModuleId): boolean {
+  return moduleId === "pagos" && (role === "admin" || role === "contador");
+}
+
+export function roleCanConsume(role: Role, moduleId: ModuleId): boolean {
+  return moduleId === "inventario" && (role === "admin" || role === "profesional" || role === "esteticista");
 }

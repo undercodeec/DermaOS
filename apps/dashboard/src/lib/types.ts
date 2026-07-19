@@ -77,6 +77,17 @@ export interface Kpis {
   ingresos: number;
   pacientes: number;
   alertas: number;
+  charts?: {
+    ingresosPorMes: ChartPoint[];
+    citasPorEstado: ChartPoint[];
+    serviciosMasVendidos: ChartPoint[];
+    pacientesNuevosPorMes: ChartPoint[];
+  };
+}
+
+export interface ChartPoint {
+  label: string;
+  value: number;
 }
 
 export interface RxItem {
@@ -97,8 +108,16 @@ export interface ClinicalRecord {
   assessment: string | null;
   plan: string | null;
   cie10Codes: string[];
-  prescription: { templateId?: string; items: RxItem[] } | null;
+  prescription: { templateId?: string; items?: RxItem[]; clinicalMetrics?: ClinicalMetrics } | null;
   professional: { id: string; name: string } | null;
+}
+
+export interface ClinicalMetrics {
+  severity: number;
+  pain: number;
+  pruritus: number;
+  inflammation: number;
+  satisfaction: number;
 }
 
 export interface Photo {
@@ -141,6 +160,7 @@ export interface Procedure {
   productUsed: string | null;
   units: number | null;
   lotNumber: string | null;
+  injectionAreas: string[];
   notes: string | null;
   service: { name: string } | null;
   professional: { name: string } | null;

@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { requireAuth, requireModule } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
-import { badRequest, notFound } from "../lib/errors.js";
+import { badRequest, forbidden, notFound } from "../lib/errors.js";
 
 const router = Router();
 router.use(requireAuth, requireModule("agenda"));
@@ -17,6 +18,35 @@ const APPT_STATUSES = [
   "no_show",
   "cancelada",
 ] as const;
+
+function scopedProfessionalId(req: Express.Request) {
+  if (req.user!.role !== "profesional" && req.user!.role !== "esteticista") return null;
+  if (!req.user!.professionalId) throw forbidden("El usuario no tiene un profesional asociado");
+  return req.user!.professionalId;
+}
+
+function assertProfessionalScope(req: Express.Request, professionalId: string) {
+  const ownProfessionalId = scopedProfessionalId(req);
+  if (ownProfessionalId && ownProfessionalId !== professionalId) {
+    throw forbidden("Solo puedes operar sobre tu propia agenda");
+  }
+}
+
+async function refreshNextAppointment(tx: Prisma.TransactionClient, patientId: string) {
+  const next = await tx.appointment.findFirst({
+    where: {
+      patientId,
+      startAt: { gt: new Date() },
+      status: { in: ["agendada", "confirmada", "en_sala"] },
+    },
+    orderBy: { startAt: "asc" },
+    select: { startAt: true },
+  });
+  await tx.patient.update({
+    where: { id: patientId },
+    data: { nextAppointment: next?.startAt ?? null },
+  });
+}
 
 function serialize(a: Awaited<ReturnType<typeof prisma.appointment.findFirstOrThrow>> & {
   patient?: { firstName: string; lastName: string; idNumber: string } | null;
@@ -64,7 +94,9 @@ router.get("/", async (req, res, next) => {
       if (to) range.lte = new Date(to);
       where.startAt = range;
     }
-    if (professionalId) where.professionalId = professionalId;
+    const ownProfessionalId = scopedProfessionalId(req);
+    if (ownProfessionalId) where.professionalId = ownProfessionalId;
+    else if (professionalId) where.professionalId = professionalId;
     const list = await prisma.appointment.findMany({
       where,
       include: {
@@ -101,43 +133,35 @@ router.post("/", requireModule("agenda", "write"), async (req, res, next) => {
     if (!svc) throw notFound("Servicio no encontrado");
     if (!pat) throw notFound("Paciente no encontrado");
     if (!prof) throw notFound("Profesional no encontrado");
+    assertProfessionalScope(req, prof.id);
     const start = new Date(b.startAt);
     const end = b.endAt
       ? new Date(b.endAt)
       : new Date(start.getTime() + svc.durationMin * 60_000);
     if (end <= start) throw badRequest("Hora de fin inválida");
 
-    const created = await prisma.appointment.create({
-      data: {
-        clinicId: req.user!.clinicId,
-        patientId: b.patientId,
-        serviceId: b.serviceId,
-        professionalId: b.professionalId,
-        startAt: start,
-        endAt: end,
-        kind: b.kind,
-        status: "agendada",
-        notes: b.notes ?? null,
-      },
-      include: {
-        patient: { select: { firstName: true, lastName: true, idNumber: true } },
-        service: { select: { name: true, price: true, durationMin: true } },
-        professional: { select: { name: true, color: true } },
-      },
-    });
-
-    if (start > new Date()) {
-      const pat = await prisma.patient.findUnique({
-        where: { id: b.patientId },
-        select: { nextAppointment: true },
+    const created = await prisma.$transaction(async (tx) => {
+      const item = await tx.appointment.create({
+        data: {
+          clinicId: req.user!.clinicId,
+          patientId: b.patientId,
+          serviceId: b.serviceId,
+          professionalId: b.professionalId,
+          startAt: start,
+          endAt: end,
+          kind: b.kind,
+          status: "agendada",
+          notes: b.notes ?? null,
+        },
+        include: {
+          patient: { select: { firstName: true, lastName: true, idNumber: true } },
+          service: { select: { name: true, price: true, durationMin: true } },
+          professional: { select: { name: true, color: true } },
+        },
       });
-      if (!pat?.nextAppointment || start < pat.nextAppointment) {
-        await prisma.patient.update({
-          where: { id: b.patientId },
-          data: { nextAppointment: start },
-        });
-      }
-    }
+      await refreshNextAppointment(tx, b.patientId);
+      return item;
+    });
 
     await audit(
       req,
@@ -159,12 +183,29 @@ const patchSchema = z.object({
   professionalId: z.string().uuid().optional(),
 });
 
-async function consumeForAppointment(apptId: string, patientId: string, serviceId: string, professionalId: string) {
-  const already = await prisma.packageRedemption.findFirst({ where: { appointmentId: apptId } });
+async function ensureProfessionalForClinic(professionalId: string, clinicId: string) {
+  const professional = await prisma.professional.findFirst({
+    where: { id: professionalId, clinicId },
+    select: { id: true },
+  });
+  if (!professional) throw notFound("Profesional no encontrado");
+  return professional;
+}
+
+async function consumeForAppointment(
+  tx: Prisma.TransactionClient,
+  apptId: string,
+  patientId: string,
+  serviceId: string,
+  professionalId: string,
+  clinicId: string,
+) {
+  const already = await tx.packageRedemption.findUnique({ where: { appointmentId: apptId } });
   if (already) return null;
-  const bal = await prisma.packageBalance.findFirst({
+  const bal = await tx.packageBalance.findFirst({
     where: {
       patientId,
+      clinicId,
       status: "activo",
       vencimiento: { gt: new Date() },
       package: { serviceId },
@@ -174,30 +215,33 @@ async function consumeForAppointment(apptId: string, patientId: string, serviceI
   });
   if (!bal || bal.sessionsUsed >= bal.sessionsTotal) return null;
   const used = bal.sessionsUsed + 1;
-  const [, redemption] = await prisma.$transaction([
-    prisma.packageBalance.update({
-      where: { id: bal.id },
-      data: {
-        sessionsUsed: used,
-        status: used >= bal.sessionsTotal ? "completado" : bal.status,
-      },
-    }),
-    prisma.packageRedemption.create({
-      data: {
-        balanceId: bal.id,
-        appointmentId: apptId,
-        professionalId,
-        note: "Sesión descontada al atender la cita",
-      },
-    }),
-  ]);
+  const claimed = await tx.packageBalance.updateMany({
+    where: { id: bal.id, status: "activo", sessionsUsed: bal.sessionsUsed },
+    data: {
+      sessionsUsed: { increment: 1 },
+      status: used >= bal.sessionsTotal ? "completado" : bal.status,
+    },
+  });
+  if (claimed.count !== 1) throw new Error("CONCURRENT_PACKAGE_CONSUMPTION");
+  const redemption = await tx.packageRedemption.create({
+    data: {
+      balanceId: bal.id,
+      appointmentId: apptId,
+      professionalId,
+      note: "Sesión descontada al atender la cita",
+    },
+  });
   return { balance: bal, redemption };
 }
 
 router.patch("/:id", requireModule("agenda", "write"), async (req, res, next) => {
   try {
     const cur = await prisma.appointment.findFirst({
-      where: { id: req.params.id, clinicId: req.user!.clinicId },
+      where: {
+        id: req.params.id,
+        clinicId: req.user!.clinicId,
+        ...(scopedProfessionalId(req) ? { professionalId: scopedProfessionalId(req)! } : {}),
+      },
     });
     if (!cur) throw notFound("Cita no encontrada");
     const b = patchSchema.parse(req.body);
@@ -205,19 +249,50 @@ router.patch("/:id", requireModule("agenda", "write"), async (req, res, next) =>
     const data: Record<string, unknown> = {};
     if (b.status) data.status = b.status;
     if (b.notes !== undefined) data.notes = b.notes;
-    if (b.professionalId) data.professionalId = b.professionalId;
+    if (b.professionalId) {
+      await ensureProfessionalForClinic(b.professionalId, req.user!.clinicId);
+      assertProfessionalScope(req, b.professionalId);
+      data.professionalId = b.professionalId;
+    }
     if (b.startAt) data.startAt = new Date(b.startAt);
     if (b.endAt) data.endAt = new Date(b.endAt);
 
-    const updated = await prisma.appointment.update({
-      where: { id: cur.id },
-      data,
-      include: {
-        patient: { select: { firstName: true, lastName: true, idNumber: true } },
-        service: { select: { name: true, price: true, durationMin: true } },
-        professional: { select: { name: true, color: true } },
-      },
-    });
+    let updated: Awaited<ReturnType<typeof prisma.appointment.findFirstOrThrow>> & {
+      patient: { firstName: string; lastName: string; idNumber: string };
+      service: { name: string; price: unknown; durationMin: number };
+      professional: { name: string; color: string };
+    };
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        updated = await prisma.$transaction(async (tx) => {
+          const item = await tx.appointment.update({
+            where: { id: cur.id },
+            data,
+            include: {
+              patient: { select: { firstName: true, lastName: true, idNumber: true } },
+              service: { select: { name: true, price: true, durationMin: true } },
+              professional: { select: { name: true, color: true } },
+            },
+          });
+          if (b.status === "atendida" && cur.status !== "atendida") {
+            await consumeForAppointment(
+              tx,
+              item.id,
+              item.patientId,
+              item.serviceId,
+              item.professionalId,
+              req.user!.clinicId,
+            );
+          }
+          if (b.startAt || b.status) await refreshNextAppointment(tx, item.patientId);
+          return item;
+        });
+        break;
+      } catch (error) {
+        if (error instanceof Error && error.message === "CONCURRENT_PACKAGE_CONSUMPTION" && attempt < 2) continue;
+        throw error;
+      }
+    }
 
     if (b.status && b.status !== cur.status) {
       await audit(
@@ -226,9 +301,6 @@ router.patch("/:id", requireModule("agenda", "write"), async (req, res, next) =>
         "agenda",
         `${updated.patient?.firstName ?? ""} ${updated.patient?.lastName ?? ""}`.trim(),
       );
-      if (b.status === "atendida" && cur.status !== "atendida") {
-        await consumeForAppointment(cur.id, cur.patientId, cur.serviceId, cur.professionalId);
-      }
     }
 
     res.json(serialize(updated));
@@ -240,11 +312,19 @@ router.patch("/:id", requireModule("agenda", "write"), async (req, res, next) =>
 router.delete("/:id", requireModule("agenda", "write"), async (req, res, next) => {
   try {
     const cur = await prisma.appointment.findFirst({
-      where: { id: req.params.id, clinicId: req.user!.clinicId },
+      where: {
+        id: req.params.id,
+        clinicId: req.user!.clinicId,
+        ...(scopedProfessionalId(req) ? { professionalId: scopedProfessionalId(req)! } : {}),
+      },
       include: { patient: { select: { firstName: true, lastName: true } } },
     });
     if (!cur) throw notFound("Cita no encontrada");
-    await prisma.appointment.delete({ where: { id: cur.id } });
+    if (cur.status === "atendida") throw badRequest("Una cita atendida no se elimina; usa una correccion auditada");
+    await prisma.$transaction(async (tx) => {
+      await tx.appointment.delete({ where: { id: cur.id } });
+      await refreshNextAppointment(tx, cur.patientId);
+    });
     await audit(
       req,
       "Eliminó cita",
@@ -261,7 +341,11 @@ router.delete("/:id", requireModule("agenda", "write"), async (req, res, next) =
 router.get("/:id/coverage", async (req, res, next) => {
   try {
     const a = await prisma.appointment.findFirst({
-      where: { id: req.params.id, clinicId: req.user!.clinicId },
+      where: {
+        id: req.params.id,
+        clinicId: req.user!.clinicId,
+        ...(scopedProfessionalId(req) ? { professionalId: scopedProfessionalId(req)! } : {}),
+      },
     });
     if (!a) throw notFound("Cita no encontrada");
 

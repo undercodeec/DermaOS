@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { roleCan, ROLES, type ModuleId } from "@/lib/permissions";
 import { getPatient, getPatientCounts } from "./api";
 import { TabAntecedentes } from "./tabs/TabAntecedentes";
+import { TabEstadisticas } from "./tabs/TabEstadisticas";
 import { TabEvolucion } from "./tabs/TabEvolucion";
 import { TabRecetas } from "./tabs/TabRecetas";
 import { TabFotos } from "./tabs/TabFotos";
@@ -17,7 +18,8 @@ import { TabPaquetes } from "./tabs/TabPaquetes";
 
 const TABS = [
   { id: "antecedentes", label: "Antecedentes" },
-  { id: "evolucion", label: "Evolución" },
+  { id: "estadisticas", label: "Estadisticas" },
+  { id: "evolucion", label: "Evolucion" },
   { id: "recetas", label: "Recetas" },
   { id: "fotos", label: "Fotos" },
   { id: "consentimientos", label: "Consentimientos" },
@@ -28,6 +30,7 @@ const TABS = [
 
 const TAB_MOD: Record<(typeof TABS)[number]["id"], ModuleId> = {
   antecedentes: "pacientes",
+  estadisticas: "pacientes",
   evolucion: "historia",
   recetas: "historia",
   fotos: "fotos",
@@ -57,23 +60,26 @@ export function PatientDetail() {
 
   const tabAllowed = (t: string) => roleCan(role, TAB_MOD[t as keyof typeof TAB_MOD] ?? "pacientes");
 
-  if (isLoading)
+  if (isLoading) {
     return (
       <div className="content-inner">
-        <EmptyState icon="users">Cargando paciente…</EmptyState>
+        <EmptyState icon="users">Cargando paciente...</EmptyState>
       </div>
     );
-  if (!patient)
+  }
+  if (!patient) {
     return (
       <div className="content-inner">
         <EmptyState icon="users">Paciente no encontrado.</EmptyState>
       </div>
     );
+  }
 
   const visibleTabs = TABS.filter((t) => tabAllowed(t.id));
   const TabBody =
     {
       antecedentes: TabAntecedentes,
+      estadisticas: TabEstadisticas,
       evolucion: TabEvolucion,
       recetas: TabRecetas,
       fotos: TabFotos,
@@ -85,17 +91,10 @@ export function PatientDetail() {
 
   return (
     <div className="content-inner">
-      <button
-        className="btn btn-ghost btn-sm"
-        style={{ marginBottom: 12 }}
-        onClick={() => navigate("/patients")}
-      >
+      <button className="btn btn-ghost btn-sm" style={{ marginBottom: 12 }} onClick={() => navigate("/patients")}>
         <Icon name="chevL" size={14} /> Pacientes
       </button>
-      <div
-        className="card card-pad"
-        style={{ display: "flex", gap: 18, alignItems: "center", marginBottom: 20 }}
-      >
+      <div className="card card-pad" style={{ display: "flex", gap: 18, alignItems: "center", marginBottom: 20 }}>
         <div className="avatar" style={{ width: 64, height: 64, fontSize: 24 }}>
           {initials(patient)}
         </div>
@@ -104,9 +103,8 @@ export function PatientDetail() {
             {fullName(patient)}
           </h1>
           <p className="page-sub">
-            {age(patient.birth_date)} años ·{" "}
-            {patient.sex === "F" ? "Femenino" : patient.sex === "M" ? "Masculino" : "Otro"} · CI{" "}
-            {patient.id_number} · {patient.city ?? "—"} · {patient.phone ?? "—"}
+            {age(patient.birth_date)} anos · {patient.sex === "F" ? "Femenino" : patient.sex === "M" ? "Masculino" : "Otro"} · CI{" "}
+            {patient.id_number} · {patient.city ?? "-"} · {patient.phone ?? "-"}
           </p>
         </div>
         <div className="chips">
@@ -123,11 +121,7 @@ export function PatientDetail() {
         {visibleTabs.map((t) => {
           const c = (counts as Record<string, number> | undefined)?.[t.id] ?? 0;
           return (
-            <button
-              key={t.id}
-              className={`ptab${tab === t.id ? " active" : ""}`}
-              onClick={() => navigate(`/patients/${patient.id}/${t.id}`)}
-            >
+            <button key={t.id} className={`ptab${tab === t.id ? " active" : ""}`} onClick={() => navigate(`/patients/${patient.id}/${t.id}`)}>
               {t.label}
               {c > 0 ? ` (${c})` : ""}
             </button>
@@ -139,8 +133,7 @@ export function PatientDetail() {
         <TabBody patient={patient} role={role} />
       ) : (
         <NoAccess>
-          El rol <strong>{ROLES[role].label}</strong> no puede abrir esta sección. Intento
-          registrado en la auditoría.
+          El rol <strong>{ROLES[role].label}</strong> no puede abrir esta seccion. Intento registrado en la auditoria.
         </NoAccess>
       )}
     </div>

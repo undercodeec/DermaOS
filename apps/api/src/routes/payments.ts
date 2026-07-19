@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
+import { env } from "../env.js";
 import { requireAuth, requireModule } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
 import { badRequest, notFound } from "../lib/errors.js";
@@ -76,6 +77,7 @@ router.post("/payphone/NotificacionPago", async (req, res) => {
 
     const approved = b.StatusCode === 3 || b.TransactionStatus?.toLowerCase() === "approved";
     if (!approved) return res.json({ Response: true, ErrorCode: "000" });
+    if (b.TransactionId === undefined) return res.json({ Response: false, ErrorCode: "445" });
 
     const expected = Math.round(Number(payment.amount) * 100);
     if (expected !== b.Amount) return res.json({ Response: false, ErrorCode: "444" });
@@ -97,9 +99,19 @@ router.post("/payphone/NotificacionPago", async (req, res) => {
       if (claimed.count !== 1) return;
 
       if (payment.conceptType === "paquete" && payment.conceptRefId) {
+        const balance = await tx.packageBalance.findFirst({
+          where: {
+            id: payment.conceptRefId,
+            clinicId: provider.clinicId,
+            patientId: payment.patientId,
+          },
+          select: { id: true },
+        });
+        if (!balance) throw new Error("Relacion de paquete invalida para el cobro");
         await tx.packagePayment.create({
           data: {
-            balanceId: payment.conceptRefId,
+            balanceId: balance.id,
+            paymentId: payment.id,
             amount: payment.amount,
             method: "payphone",
             note: "Pago Payphone notificado automaticamente",
@@ -158,9 +170,22 @@ router.post("/", requireModule("pagos", "write"), async (req, res, next) => {
     const b = createSchema.parse(req.body);
     const pat = await prisma.patient.findFirst({ where: { id: b.patientId, clinicId: req.user!.clinicId } });
     if (!pat) throw badRequest("Paciente no encontrado");
-    if (b.conceptType === "paquete" && b.conceptRefId) {
-      const bal = await prisma.packageBalance.findFirst({ where: { id: b.conceptRefId, clinicId: req.user!.clinicId } });
-      if (!bal) throw badRequest("Bono no encontrado");
+    if (b.conceptType === "paquete") {
+      if (!b.conceptRefId) throw badRequest("Selecciona el bono que recibira el abono");
+      const bal = await prisma.packageBalance.findFirst({
+        where: { id: b.conceptRefId, clinicId: req.user!.clinicId, patientId: pat.id },
+      });
+      if (!bal) throw badRequest("El bono no pertenece al paciente seleccionado");
+    } else if (b.conceptType === "factura") {
+      if (!env.INVOICES_ENABLED) throw badRequest("Facturacion no habilitada");
+      if (!b.conceptRefId) throw badRequest("Selecciona la factura que recibira el pago");
+      const invoice = await prisma.invoice.findFirst({
+        where: { id: b.conceptRefId, clinicId: req.user!.clinicId, patientId: pat.id },
+        select: { id: true },
+      });
+      if (!invoice) throw badRequest("La factura no pertenece al paciente seleccionado");
+    } else if (b.conceptRefId) {
+      throw badRequest("Este tipo de cobro no admite una referencia asociada");
     }
     const provider = await prisma.clinicPaymentProvider.findFirst({
       where: { clinicId: req.user!.clinicId, provider: "payphone", status: "active" },
@@ -240,7 +265,7 @@ router.patch("/:id/sent", requireModule("pagos", "write"), async (req, res, next
   }
 });
 
-router.patch("/:id/paid", requireModule("pagos", "write"), async (req, res, next) => {
+router.patch("/:id/paid", requireModule("pagos", "reconcile"), async (req, res, next) => {
   try {
     const cur = await prisma.payment.findFirst({
       where: { id: req.params.id, clinicId: req.user!.clinicId },
@@ -251,12 +276,43 @@ router.patch("/:id/paid", requireModule("pagos", "write"), async (req, res, next
     if (!cur) throw notFound("Cobro no encontrado");
     if (cur.status !== "pendiente") throw badRequest("El cobro ya no está pendiente");
 
-    const updated = await prisma.payment.update({
-      where: { id: cur.id },
-      data: { status: "pagado", paidAt: new Date() },
-      include: {
-        patient: { select: { firstName: true, lastName: true, idNumber: true, phone: true } },
-      },
+    const result = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.payment.updateMany({
+        where: { id: cur.id, clinicId: req.user!.clinicId, status: "pendiente" },
+        data: { status: "pagado", paidAt: new Date() },
+      });
+      if (claimed.count !== 1) throw badRequest("El cobro ya fue procesado por otra solicitud");
+
+      let packageLabel: string | null = null;
+      if (cur.conceptType === "paquete" && cur.conceptRefId) {
+        const bal = await tx.packageBalance.findFirst({
+          where: {
+            id: cur.conceptRefId,
+            clinicId: req.user!.clinicId,
+            patientId: cur.patientId,
+          },
+          include: { package: true, patient: true },
+        });
+        if (!bal) throw badRequest("El bono asociado al cobro no es valido");
+        await tx.packagePayment.create({
+          data: {
+            balanceId: bal.id,
+            paymentId: cur.id,
+            amount: cur.amount,
+            method: "payphone",
+            note: "Pago Payphone conciliado",
+          },
+        });
+        packageLabel = `${bal.package.name} · $${Number(cur.amount).toFixed(2)} · ${bal.patient.firstName} ${bal.patient.lastName}`;
+      }
+
+      const updated = await tx.payment.findUniqueOrThrow({
+        where: { id: cur.id },
+        include: {
+          patient: { select: { firstName: true, lastName: true, idNumber: true, phone: true } },
+        },
+      });
+      return { updated, packageLabel };
     });
 
     await audit(
@@ -266,31 +322,11 @@ router.patch("/:id/paid", requireModule("pagos", "write"), async (req, res, next
       `$${Number(cur.amount).toFixed(2)} · ${cur.patient?.firstName ?? ""} ${cur.patient?.lastName ?? ""}`.trim(),
     );
 
-    // Conciliación automática: si es cobro de paquete, registrar abono
-    if (cur.conceptType === "paquete" && cur.conceptRefId) {
-      const bal = await prisma.packageBalance.findUnique({
-        where: { id: cur.conceptRefId },
-        include: { package: true, patient: true },
-      });
-      if (bal) {
-        await prisma.packagePayment.create({
-          data: {
-            balanceId: bal.id,
-            amount: cur.amount,
-            method: "payphone",
-            note: "Pago Payphone conciliado",
-          },
-        });
-        await audit(
-          req,
-          "Registró abono de paquete",
-          "paquetes",
-          `${bal.package.name} · $${Number(cur.amount).toFixed(2)} · ${bal.patient.firstName} ${bal.patient.lastName}`,
-        );
-      }
+    if (result.packageLabel) {
+      await audit(req, "Registró abono de paquete", "paquetes", result.packageLabel);
     }
 
-    res.json(serialize(updated));
+    res.json(serialize(result.updated));
   } catch (e) {
     next(e);
   }

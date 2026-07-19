@@ -48,4 +48,8 @@ export function nextInvoiceNumber(lastNumber: string | null) {
   return { seq, number: "001-001-" + pad(seq, 9) };
 }
 
+export function invoiceNumber(seq: number) {
+  return "001-001-" + pad(seq, 9);
+}
+
 export const EMISOR_RUC = "1792345678001";

@@ -1,5 +1,6 @@
 import { api } from "@/lib/api";
 import type {
+  ClinicalMetrics,
   ClinicalRecord,
   Consent,
   ConsentTemplate,
@@ -72,6 +73,7 @@ export interface NewEvolucionInput {
   assessment: string;
   plan: string;
   cie10Codes: string[];
+  clinicalMetrics?: ClinicalMetrics;
 }
 export function createEvolucion(patientId: string, input: NewEvolucionInput): Promise<ClinicalRecord> {
   return api.post<ClinicalRecord>(`/patients/${patientId}/evolucion`, input);

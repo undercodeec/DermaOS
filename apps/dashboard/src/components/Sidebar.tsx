@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "./icons";
 import { useAuth } from "@/lib/auth";
 import { roleCan, type ModuleId } from "@/lib/permissions";
+import brandLogo from "@/img/logDerma-OS.png";
 
 interface NavItem {
   path: string;
@@ -62,6 +63,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sb-brand">
+        <img className="sb-logo" src={brandLogo} alt="DERMA-OS" />
         <div className="sb-wordmark">
           <strong>
             DERMA<span className="wm-accent">·OS</span>

@@ -1,20 +1,24 @@
 import { Router } from "express";
 import multer from "multer";
 import path from "node:path";
-import fs from "node:fs/promises";
-import { createReadStream } from "node:fs";
+import crypto from "node:crypto";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
 import { requireAuth, requireModule } from "../middleware/auth.js";
+import { rateLimit } from "../middleware/rateLimit.js";
 import { audit } from "../lib/audit.js";
 import { badRequest, forbidden, notFound } from "../lib/errors.js";
+import { readPhoto, removePhoto, storePhoto } from "../lib/photo-storage.js";
 
 const router = Router();
 router.use(requireAuth);
-
-const PHOTO_DIR = path.resolve(env.UPLOAD_DIR, "patient-photos");
-await fs.mkdir(PHOTO_DIR, { recursive: true });
+const photoUploadLimit = rateLimit({
+  windowMs: 60_000,
+  max: 20,
+  key: (req) => `${req.user!.clinicId}:${req.user!.id}`,
+  message: "Demasiadas fotos en poco tiempo",
+});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -35,8 +39,11 @@ const metaSchema = z.object({
 router.post(
   "/",
   requireModule("fotos", "write"),
+  photoUploadLimit,
   upload.single("file"),
   async (req, res, next) => {
+    let storagePath: string | null = null;
+    let photoPersisted = false;
     try {
       if (!req.file) throw badRequest("Falta archivo");
       const meta = metaSchema.parse(req.body);
@@ -47,10 +54,16 @@ router.post(
       });
       if (!patient) throw badRequest("Paciente no encontrado");
 
-      const ext = (req.file.mimetype.split("/")[1] ?? "bin").toLowerCase();
-      const filename = `${Date.now()}_${cryptoRandom(8)}.${ext}`;
-      const filepath = path.join(PHOTO_DIR, filename);
-      await fs.writeFile(filepath, req.file.buffer);
+      const imageType = detectImageType(req.file.buffer);
+      if (!imageType) throw badRequest("El archivo no es una imagen JPEG, PNG o WebP valida");
+      const filename = `${Date.now()}_${crypto.randomBytes(8).toString("hex")}.${imageType.ext}`;
+      storagePath = await storePhoto({
+        clinicId: req.user!.clinicId,
+        patientId: patient.id,
+        filename,
+        buffer: req.file.buffer,
+        contentType: imageType.mime,
+      });
 
       const photo = await prisma.photo.create({
         data: {
@@ -59,13 +72,15 @@ router.post(
           lesionTag: meta.lesion_tag,
           caption: meta.caption,
           kind: meta.kind,
-          storagePath: filename,
+          storagePath,
           createdById: req.user!.id,
         },
       });
+      photoPersisted = true;
       await audit(req, "Subió fotografía clínica", "fotos", `${meta.lesion_tag}`);
       res.status(201).json(photo);
     } catch (e) {
+      if (storagePath && !photoPersisted) await removePhoto(storagePath).catch(() => {});
       next(e);
     }
   },
@@ -80,11 +95,11 @@ router.get("/:id/file", requireModule("fotos"), async (req, res, next) => {
     });
     if (!p) throw notFound("Foto no existe");
     if (p.patient.clinicId !== req.user!.clinicId) throw forbidden();
-    const full = path.join(PHOTO_DIR, p.storagePath);
-    if (!isInside(full, PHOTO_DIR)) throw notFound();
+    const image = await readPhoto(p.storagePath).catch(() => null);
+    if (!image) throw notFound();
     await audit(req, "Visualizó fotografía clínica", "fotos", p.lesionTag);
     res.setHeader("Content-Type", guessMime(p.storagePath));
-    createReadStream(full).pipe(res);
+    res.send(image);
   } catch (e) {
     next(e);
   }
@@ -100,7 +115,7 @@ router.delete("/:id", requireModule("fotos", "write"), async (req, res, next) =>
     if (p.patient.clinicId !== req.user!.clinicId) throw forbidden();
     if (req.user!.role !== "admin") return next(notFound());
     await prisma.photo.delete({ where: { id: p.id } });
-    await fs.unlink(path.join(PHOTO_DIR, p.storagePath)).catch(() => {});
+    await removePhoto(p.storagePath).catch(() => {});
     await audit(req, "Eliminó fotografía clínica", "fotos", p.lesionTag);
     res.json({ ok: true });
   } catch (e) {
@@ -108,13 +123,21 @@ router.delete("/:id", requireModule("fotos", "write"), async (req, res, next) =>
   }
 });
 
-function cryptoRandom(n: number) {
-  return Array.from({ length: n }, () => Math.floor(Math.random() * 36).toString(36)).join("");
-}
-
-function isInside(child: string, parent: string) {
-  const rel = path.relative(parent, child);
-  return !rel.startsWith("..") && !path.isAbsolute(rel);
+function detectImageType(buffer: Buffer) {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return { ext: "jpg", mime: "image/jpeg" };
+  }
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return { ext: "png", mime: "image/png" };
+  }
+  if (
+    buffer.length >= 12
+    && buffer.subarray(0, 4).toString("ascii") === "RIFF"
+    && buffer.subarray(8, 12).toString("ascii") === "WEBP"
+  ) {
+    return { ext: "webp", mime: "image/webp" };
+  }
+  return null;
 }
 
 function guessMime(filename: string) {
@@ -123,9 +146,7 @@ function guessMime(filename: string) {
     jpg: "image/jpeg",
     jpeg: "image/jpeg",
     png: "image/png",
-    gif: "image/gif",
     webp: "image/webp",
-    svg: "image/svg+xml",
   } as Record<string, string>)[ext] ?? "application/octet-stream";
 }
 

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { startOfMonth, endOfMonth, startOfDay, endOfDay } from "date-fns";
+import { startOfMonth, endOfMonth, startOfDay, endOfDay, subMonths } from "date-fns";
 import { prisma } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 
@@ -11,12 +11,32 @@ router.get("/kpis", async (req, res, next) => {
   try {
     const now = new Date();
     const cid = req.user!.clinicId;
-    const [citasHoy, ingresosRes, pacientes, inventario] = await Promise.all([
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
+    const chartStart = startOfMonth(subMonths(now, 5));
+    const chartEnd = monthEnd;
+    const monthKeys = Array.from({ length: 6 }, (_, i) => {
+      const d = subMonths(now, 5 - i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = new Intl.DateTimeFormat("es-EC", { month: "short" }).format(d).replace(".", "");
+      return { key, label: label.charAt(0).toUpperCase() + label.slice(1) };
+    });
+
+    const [
+      citasHoy,
+      ingresosRes,
+      pacientes,
+      inventario,
+      monthlyInvoices,
+      monthlyPatients,
+      appointmentsByStatus,
+      serviceProcedures,
+    ] = await Promise.all([
       prisma.appointment.count({
         where: { clinicId: cid, startAt: { gte: startOfDay(now), lte: endOfDay(now) } },
       }),
       prisma.invoice.aggregate({
-        where: { clinicId: cid, status: "autorizada", date: { gte: startOfMonth(now), lte: endOfMonth(now) } },
+        where: { clinicId: cid, status: "autorizada", date: { gte: monthStart, lte: monthEnd } },
         _sum: { total: true },
       }),
       prisma.patient.count({ where: { clinicId: cid } }),
@@ -24,13 +44,62 @@ router.get("/kpis", async (req, res, next) => {
         where: { clinicId: cid },
         select: { stock: true, minStock: true },
       }),
+      prisma.invoice.findMany({
+        where: { clinicId: cid, status: "autorizada", date: { gte: chartStart, lte: chartEnd } },
+        select: { date: true, total: true },
+      }),
+      prisma.patient.findMany({
+        where: { clinicId: cid, createdAt: { gte: chartStart, lte: chartEnd } },
+        select: { createdAt: true },
+      }),
+      prisma.appointment.groupBy({
+        by: ["status"],
+        where: { clinicId: cid, startAt: { gte: monthStart, lte: monthEnd } },
+        _count: { _all: true },
+      }),
+      prisma.procedure.findMany({
+        where: { date: { gte: chartStart, lte: chartEnd }, service: { clinicId: cid } },
+        select: { service: { select: { name: true } } },
+      }),
     ]);
+
     const alertas = inventario.filter((i) => Number(i.stock) <= Number(i.minStock)).length;
+    const ingresosPorMes = monthKeys.map((m) => ({
+      label: m.label,
+      value: monthlyInvoices
+        .filter((inv) => `${inv.date.getFullYear()}-${String(inv.date.getMonth() + 1).padStart(2, "0")}` === m.key)
+        .reduce((sum, inv) => sum + Number(inv.total), 0),
+    }));
+    const pacientesNuevosPorMes = monthKeys.map((m) => ({
+      label: m.label,
+      value: monthlyPatients.filter(
+        (p) => `${p.createdAt.getFullYear()}-${String(p.createdAt.getMonth() + 1).padStart(2, "0")}` === m.key,
+      ).length,
+    }));
+    const citasPorEstado = appointmentsByStatus.map((row) => ({
+      label: row.status,
+      value: row._count._all,
+    }));
+    const serviceCounts = serviceProcedures.reduce<Record<string, number>>((acc, p) => {
+      acc[p.service.name] = (acc[p.service.name] ?? 0) + 1;
+      return acc;
+    }, {});
+    const serviciosMasVendidos = Object.entries(serviceCounts)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+
     res.json({
       citasHoy,
       ingresos: Number(ingresosRes._sum.total ?? 0),
       pacientes,
       alertas,
+      charts: {
+        ingresosPorMes,
+        citasPorEstado,
+        serviciosMasVendidos,
+        pacientesNuevosPorMes,
+      },
     });
   } catch (e) {
     next(e);

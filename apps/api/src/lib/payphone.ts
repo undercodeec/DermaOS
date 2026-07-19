@@ -42,14 +42,27 @@ export async function createPayphoneLink(creds: PayphoneCredentials, input: Crea
     isAmountEditable: false,
   };
 
-  const res = await fetch(`${env.PAYPHONE_API_BASE.replace(/\/$/, "")}/Links`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${creds.token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  let res: Response;
+  try {
+    res = await fetch(`${env.PAYPHONE_API_BASE.replace(/\/$/, "")}/Links`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${creds.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw badRequest("Payphone no respondio dentro del tiempo esperado");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
   const text = await res.text();
   let parsed: unknown = text;
   try {

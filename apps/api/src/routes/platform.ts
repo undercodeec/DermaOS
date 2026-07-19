@@ -1,10 +1,10 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
-import { requirePlatformKey } from "../middleware/platformKey.js";
-import { badRequest, notFound } from "../lib/errors.js";
+import { requirePlatformAuth, signPlatformToken, verifyPlatformCredentials } from "../middleware/platformKey.js";
+import { badRequest, notFound, unauthorized } from "../lib/errors.js";
 import {
   ALL_MODULES,
   addDays,
@@ -14,11 +14,31 @@ import {
   ensureSubscription,
 } from "../lib/entitlements.js";
 import { createPayphoneLink, newClientTransactionId } from "../lib/payphone.js";
+import { ipAndEmailKey, rateLimit } from "../middleware/rateLimit.js";
 
 const router = Router();
 const MAX_TRIAL_DAYS = 30;
 const MAX_SUBSCRIPTION_MONTHS = 24;
 const MAX_SUBSCRIPTION_AMOUNT = 10000;
+const platformLoginLimit = rateLimit({ windowMs: 15 * 60_000, max: 5, key: ipAndEmailKey });
+
+async function auditPlatform(req: Request, clinicId: string, action: string, label: string) {
+  await prisma.auditLog.create({
+    data: {
+      clinicId,
+      userId: null,
+      action,
+      cat: "plataforma",
+      label,
+      ip: req.ip ?? null,
+    },
+  });
+}
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
 
 const notificationSchema = z.object({
   Amount: z.number().int().nonnegative(),
@@ -41,6 +61,7 @@ router.post("/payphone/NotificacionPago", async (req, res) => {
     if (!pay) return res.json({ Response: false, ErrorCode: "222" });
     const approved = b.StatusCode === 3 || b.TransactionStatus?.toLowerCase() === "approved";
     if (!approved) return res.json({ Response: true, ErrorCode: "000" });
+    if (b.TransactionId === undefined) return res.json({ Response: false, ErrorCode: "445" });
     if (Math.round(Number(pay.amount) * 100) !== b.Amount) {
       return res.json({ Response: false, ErrorCode: "444" });
     }
@@ -94,7 +115,32 @@ router.post("/payphone/NotificacionPago", async (req, res) => {
   }
 });
 
-router.use(requirePlatformKey);
+router.post("/login", platformLoginLimit, async (req, res, next) => {
+  try {
+    const body = loginSchema.parse(req.body);
+    if (!verifyPlatformCredentials(body.email, body.password)) {
+      throw unauthorized("Credenciales de superadmin invalidas");
+    }
+
+    // TODO: Reactivar validacion por email antes de entrar a produccion:
+    // 1. Generar codigo temporal asociado a env.PLATFORM_ADMIN_EMAIL.
+    // 2. Enviar el codigo por SMTP.
+    // 3. Responder { emailVerificationRequired: true } hasta que /platform/verify-email confirme el codigo.
+    // 4. Emitir el token solo despues de verificar el email en cada ingreso.
+
+    res.json({
+      token: signPlatformToken(env.PLATFORM_ADMIN_EMAIL),
+      profile: {
+        email: env.PLATFORM_ADMIN_EMAIL,
+        role: "superadmin",
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.use(requirePlatformAuth);
 
 type ClinicWithAccess = NonNullable<Awaited<ReturnType<typeof prisma.clinic.findUnique>>> & {
   subscription?: {
@@ -174,6 +220,7 @@ router.patch("/clinics/:id/access", async (req, res, next) => {
         notes: body.notes ?? null,
       },
     });
+    await auditPlatform(req, clinic.id, "Actualizo acceso de clinica", JSON.stringify(body));
     const fresh = await prisma.clinic.findUnique({
       where: { id: clinic.id },
       include: {
@@ -214,6 +261,7 @@ router.post("/clinics/:id/trial", async (req, res, next) => {
         allowedModules: body.allowedModules ?? ALL_MODULES,
       },
     });
+    await auditPlatform(req, clinic.id, "Activo demo de clinica", `${body.days} dias`);
     const fresh = await prisma.clinic.findUnique({
       where: { id: clinic.id },
       include: {
@@ -247,6 +295,7 @@ router.post("/clinics/:id/extend", async (req, res, next) => {
         allowedModules: ALL_MODULES,
       },
     });
+    await auditPlatform(req, clinic.id, "Extendio suscripcion manualmente", `${body.months} mes(es)`);
     const fresh = await prisma.clinic.findUnique({
       where: { id: clinic.id },
       include: {
@@ -284,19 +333,29 @@ router.post("/clinics/:id/payment-link", async (req, res, next) => {
         note: `Suscripcion DERMA-OS ${body.months} mes(es)`,
       },
     });
-    const payphone = await createPayphoneLink(
-      { token: env.PLATFORM_PAYPHONE_TOKEN, storeId: env.PLATFORM_PAYPHONE_STORE_ID },
-      {
-        amount: body.amount,
-        reference: `DERMA-OS suscripcion - ${clinic.name}`,
-        clientTransactionId,
-        additionalData: `platform-subscription:${clinic.id}:${created.id}`,
-      },
-    );
+    let payphone;
+    try {
+      payphone = await createPayphoneLink(
+        { token: env.PLATFORM_PAYPHONE_TOKEN, storeId: env.PLATFORM_PAYPHONE_STORE_ID },
+        {
+          amount: body.amount,
+          reference: `DERMA-OS suscripcion - ${clinic.name}`,
+          clientTransactionId,
+          additionalData: `platform-subscription:${clinic.id}:${created.id}`,
+        },
+      );
+    } catch (error) {
+      await prisma.platformSubscriptionPayment.update({
+        where: { id: created.id },
+        data: { status: "fallido", note: "Payphone no pudo generar el link" },
+      });
+      throw error;
+    }
     const updated = await prisma.platformSubscriptionPayment.update({
       where: { id: created.id },
       data: { payphoneLink: payphone.link, providerPayload: payphone.payload },
     });
+    await auditPlatform(req, clinic.id, "Genero link de suscripcion", `$${body.amount.toFixed(2)} · ${body.months} mes(es)`);
     res.status(201).json({
       id: updated.id,
       link: updated.payphoneLink,

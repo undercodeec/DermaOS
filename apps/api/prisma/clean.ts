@@ -1,11 +1,25 @@
 // Vacia todos los registros de negocio. No crea usuarios, clinicas ni datos demo.
 // Uso: pnpm db:clean
 
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
+const REQUIRED_CONFIRMATION = "I_UNDERSTAND_THIS_DELETES_ALL_DATA";
+
+function assertWipeAllowed() {
+  if ((process.env.NODE_ENV ?? "").toLowerCase() === "production") {
+    throw new Error("[clean] bloqueado: nunca se permite limpiar NODE_ENV=production");
+  }
+  if (process.env.ALLOW_DATABASE_WIPE !== REQUIRED_CONFIRMATION) {
+    throw new Error(
+      `[clean] bloqueado: define ALLOW_DATABASE_WIPE=${REQUIRED_CONFIRMATION} para confirmar el borrado total`,
+    );
+  }
+}
 
 async function main() {
+  assertWipeAllowed();
   console.log("[clean] eliminando todos los registros...");
 
   await prisma.auditLog.deleteMany();

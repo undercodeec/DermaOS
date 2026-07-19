@@ -1,6 +1,16 @@
 import { API_BASE } from "@/lib/api";
 
-const KEY = "derma_platform_key";
+const TOKEN_KEY = "derma_platform_token";
+
+export interface PlatformProfile {
+  email: string;
+  role: "superadmin";
+}
+
+export interface PlatformLoginResponse {
+  token: string;
+  profile: PlatformProfile;
+}
 
 export interface PlatformClinic {
   id: string;
@@ -27,20 +37,25 @@ export interface PlatformPaymentLink {
   clientTransactionId: string;
 }
 
-export function getPlatformKey() {
-  return sessionStorage.getItem(KEY) ?? "";
+export function getPlatformToken() {
+  return sessionStorage.getItem(TOKEN_KEY) ?? "";
 }
 
-export function setPlatformKey(key: string) {
-  sessionStorage.setItem(KEY, key);
+export function setPlatformToken(token: string) {
+  sessionStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearPlatformToken() {
+  sessionStorage.removeItem(TOKEN_KEY);
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = getPlatformToken();
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      "x-platform-key": getPlatformKey(),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init.headers ?? {}),
     },
   });
@@ -52,9 +67,17 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       /* body no json */
     }
+    if (res.status === 401) clearPlatformToken();
     throw new Error(msg);
   }
   return (await res.json()) as T;
+}
+
+export function loginPlatform(email: string, password: string) {
+  return request<PlatformLoginResponse>("/platform/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
 }
 
 export function listPlatformClinics() {

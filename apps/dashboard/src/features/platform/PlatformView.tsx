@@ -3,11 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Btn, EmptyState, Field, PageHead } from "@/components/Primitives";
 import { fmtDate } from "@/lib/helpers";
 import {
+  clearPlatformToken,
   createSubscriptionPaymentLink,
   extendSubscription,
-  getPlatformKey,
+  getPlatformToken,
   listPlatformClinics,
-  setPlatformKey,
+  loginPlatform,
+  setPlatformToken,
   startTrial,
   updateClinicAccess,
   type PlatformClinic,
@@ -39,16 +41,28 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
 
 export function PlatformView() {
   const qc = useQueryClient();
-  const [key, setKey] = useState(getPlatformKey());
+  const [token, setToken] = useState(getPlatformToken());
+  const [email, setEmail] = useState("gerencia@undercodeec.com");
+  const [password, setPassword] = useState("");
   const [amount, setAmount] = useState(49);
   const [selected, setSelected] = useState<PlatformClinic | null>(null);
   const [link, setLink] = useState("");
 
-  const enabled = key.length > 0;
+  const enabled = token.length > 0;
   const { data = [], isLoading, error } = useQuery({
-    queryKey: ["platform-clinics", key],
+    queryKey: ["platform-clinics", token],
     enabled,
     queryFn: listPlatformClinics,
+  });
+
+  const loginMut = useMutation({
+    mutationFn: () => loginPlatform(email.trim(), password),
+    onSuccess: (r) => {
+      setPlatformToken(r.token);
+      setToken(r.token);
+      setPassword("");
+      qc.invalidateQueries({ queryKey: ["platform-clinics"] });
+    },
   });
 
   const stats = useMemo(() => {
@@ -60,9 +74,12 @@ export function PlatformView() {
     };
   }, [data]);
 
-  function saveKey() {
-    setPlatformKey(key.trim());
-    qc.invalidateQueries({ queryKey: ["platform-clinics"] });
+  function logout() {
+    clearPlatformToken();
+    setToken("");
+    setSelected(null);
+    setLink("");
+    qc.removeQueries({ queryKey: ["platform-clinics"] });
   }
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["platform-clinics"] });
@@ -89,22 +106,48 @@ export function PlatformView() {
   return (
     <div className="content" style={{ minHeight: "100vh" }}>
       <div className="content-inner">
-        <PageHead title="Plataforma DERMA-OS" sub="Demo, suscripciones y accesos por clinica">
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              type="password"
-              placeholder="Platform key"
-              style={{ width: 260 }}
-            />
-            <Btn kind="primary" onClick={saveKey}>Entrar</Btn>
-          </div>
+        <PageHead title="Superadmin global" sub="Clinicas, demos, suscripciones y accesos de plataforma">
+          {enabled ? <Btn kind="ghost" onClick={logout}>Salir</Btn> : null}
         </PageHead>
 
         {!enabled ? (
-          <div className="card">
-            <EmptyState icon="lock">Ingresa tu platform key para administrar demos y suscripciones.</EmptyState>
+          <div className="card card-pad" style={{ maxWidth: 520 }}>
+            <h2 style={{ marginTop: 0 }}>Ingreso superadmin</h2>
+            <p className="muted">
+              Acceso exclusivo para gerencia de plataforma. La verificacion por email queda temporalmente desactivada para pruebas locales.
+            </p>
+            <Field label="Correo">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="username"
+                placeholder="gerencia@undercodeec.com"
+              />
+            </Field>
+            <Field label="Contrasena">
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                placeholder="Definida en PLATFORM_ADMIN_PASSWORD"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && email.trim() && password) loginMut.mutate();
+                }}
+              />
+            </Field>
+            <Btn
+              kind="primary"
+              icon="check"
+              disabled={!email.trim() || !password || loginMut.isPending}
+              onClick={() => loginMut.mutate()}
+            >
+              {loginMut.isPending ? "Ingresando..." : "Entrar"}
+            </Btn>
+            {loginMut.isError ? (
+              <p style={{ color: "var(--err)", fontSize: 13 }}>{(loginMut.error as Error).message}</p>
+            ) : null}
           </div>
         ) : error ? (
           <div className="warn-box">{(error as Error).message}</div>

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireAuth, requireModule } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
-import { notFound } from "../lib/errors.js";
+import { forbidden, notFound } from "../lib/errors.js";
 
 const router = Router();
 router.use(requireAuth, requireModule("inventario"));
@@ -107,13 +107,16 @@ router.delete("/:id", requireModule("inventario", "write"), async (req, res, nex
 
 const adjustSchema = z.object({ delta: z.number() });
 
-router.patch("/:id/adjust", requireModule("inventario", "write"), async (req, res, next) => {
+router.patch("/:id/adjust", requireModule("inventario", "consume"), async (req, res, next) => {
   try {
     const cur = await prisma.inventoryItem.findFirst({
       where: { id: req.params.id, clinicId: req.user!.clinicId },
     });
     if (!cur) throw notFound("Ítem no encontrado");
     const { delta } = adjustSchema.parse(req.body);
+    if (req.user!.role !== "admin" && delta > 0) {
+      throw forbidden("Solo un administrador puede reponer inventario");
+    }
     const newStock = Math.max(0, Number(cur.stock) + delta);
     const item = await prisma.inventoryItem.update({
       where: { id: cur.id },
