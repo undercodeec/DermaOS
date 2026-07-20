@@ -956,6 +956,11 @@ button.dash-date:hover { border-color: var(--brown-500); color: var(--brown-600)
   background: var(--err-bg); color: var(--err); border: 1px solid #F5C7CB;
   padding: 9px 12px; border-radius: var(--r-sm); font-size: 13px; margin: 0 0 12px;
 }
+.login-notice {
+  background: var(--ok-bg); color: var(--ok); border: 1px solid #CDE6D7;
+  padding: 9px 12px; border-radius: var(--r-sm); font-size: 13px; margin: 0 0 12px;
+}
+.login-forgot { text-align: right; margin: -4px 0 14px; font-size: 12.5px; }
 .login-help {
   margin-top: 18px; font-size: 12.5px; color: var(--ink-3);
   border-top: 1px solid var(--border); padding-top: 14px;

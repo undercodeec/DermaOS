@@ -43,6 +43,8 @@ interface AuthState {
     adminPassword: string;
   }) => Promise<RegisterOutcome>;
   verifyRegistration: (adminEmail: string, emailCode: string) => Promise<LoginOutcome>;
+  requestPasswordReset: (email: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  confirmPasswordReset: (email: string, code: string, password: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   signOut: () => Promise<void>;
 }
 
@@ -136,6 +138,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const requestPasswordReset = async (email: string) => {
+    try {
+      await api.post("/auth/password-reset/request", { email });
+      return { ok: true } as const;
+    } catch (e) {
+      return { ok: false, error: e instanceof ApiError ? e.message : "Error de red" } as const;
+    }
+  };
+
+  const confirmPasswordReset = async (email: string, code: string, password: string) => {
+    try {
+      await api.post("/auth/password-reset/confirm", { email, code, password });
+      return { ok: true } as const;
+    } catch (e) {
+      return { ok: false, error: e instanceof ApiError ? e.message : "Error de red" } as const;
+    }
+  };
+
   const signOut = async () => {
     try {
       await api.post("/auth/logout");
@@ -147,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ profile, loading, signIn, signUp, verifyRegistration, signOut }}>
+    <AuthContext.Provider value={{ profile, loading, signIn, signUp, verifyRegistration, requestPasswordReset, confirmPasswordReset, signOut }}>
       {children}
     </AuthContext.Provider>
   );

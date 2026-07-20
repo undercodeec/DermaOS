@@ -12,15 +12,24 @@ import {
   hashLoginEmailCode,
   isProductionAuthVerificationEnabled,
   sendLoginEmailCode,
+  sendPasswordResetEmailCode,
 } from "../lib/login-email.js";
 
 const router = Router();
 const loginLimit = rateLimit({ windowMs: 15 * 60_000, max: 10, key: ipAndEmailKey });
+const passwordResetRequestLimit = rateLimit({ windowMs: 15 * 60_000, max: 3, key: ipAndEmailKey });
+const passwordResetConfirmLimit = rateLimit({ windowMs: 15 * 60_000, max: 5, key: ipAndEmailKey });
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
   emailCode: z.string().regex(/^\d{6}$/).optional(),
+});
+const passwordResetRequestSchema = z.object({ email: z.string().email() });
+const passwordResetConfirmSchema = z.object({
+  email: z.string().email(),
+  code: z.string().regex(/^\d{6}$/),
+  password: z.string().min(8, "La contrasena debe tener al menos 8 caracteres").max(128),
 });
 
 function buildLoginResponse(user: UserRow) {
@@ -108,6 +117,63 @@ function maskEmail(email: string) {
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
+
+function hashPasswordResetCode(userId: string, code: string) {
+  return hashLoginEmailCode(`password-reset:${userId}`, code);
+}
+
+router.post("/password-reset/request", passwordResetRequestLimit, async (req, res, next) => {
+  try {
+    const { email: rawEmail } = passwordResetRequestSchema.parse(req.body);
+    const email = normalizeEmail(rawEmail);
+    const user = await prisma.user.findUnique({ where: { email } });
+    // Never disclose whether an email is registered.
+    if (!user || !user.active) return res.json({ ok: true });
+
+    const code = generateLoginEmailCode();
+    const expiresAt = new Date(Date.now() + env.AUTH_EMAIL_CODE_TTL_MINUTES * 60 * 1000);
+    await prisma.$transaction([
+      prisma.passwordResetCode.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: new Date() } }),
+      prisma.passwordResetCode.create({ data: { userId: user.id, codeHash: hashPasswordResetCode(user.id, code), expiresAt } }),
+    ]);
+    await sendPasswordResetEmailCode(user.email, code);
+    await prisma.auditLog.create({
+      data: { clinicId: user.clinicId, userId: user.id, action: "Solicitud de recuperacion de contrasena", cat: "sesion", ip: req.ip ?? null },
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/password-reset/confirm", passwordResetConfirmLimit, async (req, res, next) => {
+  try {
+    const body = passwordResetConfirmSchema.parse(req.body);
+    const user = await prisma.user.findUnique({ where: { email: normalizeEmail(body.email) } });
+    if (!user || !user.active) throw badRequest("El codigo es invalido o expiro");
+
+    const reset = await prisma.passwordResetCode.findFirst({
+      where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!reset || hashPasswordResetCode(user.id, body.code) !== reset.codeHash) {
+      throw badRequest("El codigo es invalido o expiro");
+    }
+
+    const passwordHash = await bcrypt.hash(body.password, 12);
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: user.id }, data: { passwordHash, mfaSecret: null } }),
+      prisma.passwordResetCode.update({ where: { id: reset.id }, data: { usedAt: new Date() } }),
+      prisma.passwordResetCode.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: new Date() } }),
+      prisma.auditLog.create({
+        data: { clinicId: user.clinicId, userId: user.id, action: "Contrasena restablecida", cat: "sesion", ip: req.ip ?? null },
+      }),
+    ]);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
 
 router.post("/login", loginLimit, async (req, res, next) => {
   try {

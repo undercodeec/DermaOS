@@ -179,3 +179,21 @@ export async function sendRegistrationEmailCode(to: string, code: string) {
 
   await sendEmailCode(to, subject, text, html, "auth/register-code", code);
 }
+
+export async function sendPasswordResetEmailCode(to: string, code: string) {
+  const subject = "Restablece tu contrasena de DERMA-OS";
+  const text = [
+    "Tu codigo para restablecer la contrasena de DERMA-OS es:", code, "",
+    `Caduca en ${env.AUTH_EMAIL_CODE_TTL_MINUTES} minutos y solo puede usarse una vez.`,
+    "Si no solicitaste este cambio, ignora este correo.",
+  ].join("\r\n");
+  const html = [
+    "<div style=\"font-family:Arial,sans-serif;line-height:1.5;color:#111827\">",
+    "<p>Tu codigo para restablecer la contrasena de <strong>DERMA-OS</strong> es:</p>",
+    `<p style=\"font-size:28px;font-weight:700;letter-spacing:6px;margin:16px 0\">${code}</p>`,
+    `<p>Caduca en ${env.AUTH_EMAIL_CODE_TTL_MINUTES} minutos y solo puede usarse una vez.</p>`,
+    "<p>Si no solicitaste este cambio, ignora este correo.</p>",
+    "</div>",
+  ].join("");
+  await sendEmailCode(to, subject, text, html, "auth/password-reset", code);
+}
