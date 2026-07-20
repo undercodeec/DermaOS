@@ -2,13 +2,15 @@
 
 ## Administración
 
-El rol `admin` configura el logo y administra las plantillas desde **Sistema**.
+El rol `admin` configura el logo, aprueba, versiona y archiva las plantillas desde **Sistema**.
 
 1. Crear una plantilla manual o importar un archivo PDF/DOCX de hasta 8 MB.
 2. Si se importa, DERMA-OS conserva el archivo original y su huella SHA-256, y extrae el texto a un borrador.
 3. Revisar el texto extraído. Los PDF escaneados sin texto requieren transcripción manual; no se aplica OCR en esta versión.
 4. Aprobar el borrador. Una versión aprobada queda bloqueada.
 5. Para cambiar una versión aprobada, usar **Nueva versión**, editar el nuevo borrador y aprobarlo.
+
+Al abrir **Pacientes → Consentimientos → Generar consentimiento**, `admin` y `profesional` también ven **Crear o importar plantilla**. Desde ese mismo flujo pueden crear un borrador manual o cargar un PDF/DOCX; el profesional puede proponer el borrador, pero un `admin` debe revisarlo y aprobarlo antes de usarlo con pacientes.
 
 Solo las plantillas aprobadas y autorizadas para el rol activo aparecen al generar un consentimiento. Por defecto pueden generarlas `admin` y `profesional`; el administrador puede habilitar expresamente una plantilla para `esteticista`. `recepcion` solo facilita la firma de un documento previamente preparado y `contador` no tiene acceso.
 

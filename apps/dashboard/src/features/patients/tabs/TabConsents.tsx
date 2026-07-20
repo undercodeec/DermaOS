@@ -136,7 +136,7 @@ export function TabConsents({ patient, role }: TabProps) {
         </div>
       )}
 
-      {openNew ? <NewConsentModal patient={patient} onClose={() => setOpenNew(false)} /> : null}
+      {openNew ? <NewConsentModal patient={patient} role={role} onClose={() => setOpenNew(false)} /> : null}
       {signTarget ? (
         <SignConsentModal
           consent={signTarget}

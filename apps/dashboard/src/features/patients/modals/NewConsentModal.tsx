@@ -4,10 +4,12 @@ import { Modal } from "@/components/Modal";
 import { Btn, Field } from "@/components/Primitives";
 import { Icon } from "@/components/icons";
 import { createConsent, listConsentTemplates } from "../api";
-import type { ConsentTemplate, Patient } from "@/lib/types";
+import type { ConsentTemplate, Patient, Role } from "@/lib/types";
+import { TemplateQuickCreateModal } from "./TemplateQuickCreateModal";
 
-export function NewConsentModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
+export function NewConsentModal({ patient, role, onClose }: { patient: Patient; role: Role; onClose: () => void }) {
   const qc = useQueryClient();
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
   const { data: tpls = [], isLoading, isError } = useQuery({ queryKey: ["consent-templates"], queryFn: listConsentTemplates });
   const [tid, setTid] = useState("");
 
@@ -28,6 +30,13 @@ export function NewConsentModal({ patient, onClose }: { patient: Patient; onClos
       onClose();
     },
   });
+
+  if (creatingTemplate) {
+    return <TemplateQuickCreateModal role={role} onClose={() => setCreatingTemplate(false)} onCreated={() => {
+      qc.invalidateQueries({ queryKey: ["consent-templates"] });
+      setCreatingTemplate(false);
+    }} />;
+  }
 
   return (
     <Modal
@@ -65,9 +74,15 @@ export function NewConsentModal({ patient, onClose }: { patient: Patient; onClos
           )}
         </select>
       </Field>
+      {(role === "admin" || role === "profesional") ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 14px" }}>
+          <Btn sm icon="plus" onClick={() => setCreatingTemplate(true)}>Crear o importar plantilla</Btn>
+          <span className="muted" style={{ fontSize: 12.5 }}>PDF, Word o contenido nuevo</span>
+        </div>
+      ) : null}
       {!isLoading && !isError && tpls.length === 0 ? (
         <p className="muted" style={{ fontSize: 13, marginTop: -4 }}>
-          No hay plantillas aprobadas. Un administrador debe crear o importar una plantilla en Sistema y aprobarla.
+          No hay plantillas aprobadas. Cree o importe un borrador desde este flujo; un administrador deberá revisarlo y aprobarlo antes de usarlo.
         </p>
       ) : null}
       {isError ? <p style={{ color: "var(--err)", fontSize: 13 }}>No se pudieron cargar las plantillas.</p> : null}

@@ -1,15 +1,25 @@
 import { Router } from "express";
 import crypto from "node:crypto";
 import { Prisma } from "@prisma/client";
+import multer from "multer";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireAuth, requireModule, requireRole } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
-import { conflict, forbidden, notFound } from "../lib/errors.js";
-import { buildConsentPdf, consentContentHash, sha256 } from "../lib/consent-documents.js";
+import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
+import { buildConsentPdf, consentContentHash, extractConsentText, sha256 } from "../lib/consent-documents.js";
 
 const router = Router();
 router.use(requireAuth);
+
+const templateUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
+
+const templateDraftSchema = z.object({
+  kind: z.enum(["clinico", "imagen"]),
+  title: z.string().trim().min(3).max(180),
+  procedureType: z.string().trim().min(2).max(120),
+  body: z.string().trim().min(20).max(100_000),
+});
 
 const publicTemplateSelect = {
   id: true,
@@ -23,6 +33,52 @@ const publicTemplateSelect = {
   approvedAt: true,
   allowedRoles: true,
 } as const;
+
+// El profesional puede proponer textos desde el flujo del paciente, pero solo
+// administración puede aprobarlos desde el módulo de Sistema.
+router.post("/templates/drafts", requireModule("consentimientos", "write"), requireRole("admin", "profesional"), async (req, res, next) => {
+  try {
+    const input = templateDraftSchema.parse(req.body);
+    const created = await prisma.consentTemplate.create({
+      data: { ...input, clinicId: req.user!.clinicId, allowedRoles: ["admin", "profesional"] },
+      select: publicTemplateSelect,
+    });
+    await audit(req, "Creó borrador de plantilla de consentimiento", "consentimiento", created.title);
+    res.status(201).json(created);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/templates/import", requireModule("consentimientos", "write"), requireRole("admin", "profesional"), templateUpload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) throw badRequest("Seleccione un documento PDF o DOCX");
+    const kind = z.enum(["clinico", "imagen"]).parse(req.body.kind ?? "clinico");
+    const extracted = await extractConsentText(req.file.buffer, req.file.mimetype, req.file.originalname);
+    const input = templateDraftSchema.parse({
+      kind,
+      title: String(req.body.title || req.file.originalname.replace(/\.(pdf|docx)$/i, "")).trim(),
+      procedureType: String(req.body.procedureType || "General").trim(),
+      body: extracted,
+    });
+    const created = await prisma.consentTemplate.create({
+      data: {
+        ...input,
+        clinicId: req.user!.clinicId,
+        allowedRoles: ["admin", "profesional"],
+        sourceName: req.file.originalname,
+        sourceMime: req.file.mimetype,
+        sourceSha256: crypto.createHash("sha256").update(req.file.buffer).digest("hex"),
+        sourceFile: req.file.buffer,
+      },
+      select: publicTemplateSelect,
+    });
+    await audit(req, "Importó documento como borrador de plantilla", "consentimiento", `${created.title} · ${req.file.originalname}`);
+    res.status(201).json(created);
+  } catch (e) {
+    next(e);
+  }
+});
 
 const signSchema = z.object({
   accepted: z.literal(true),
