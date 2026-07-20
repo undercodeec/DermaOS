@@ -196,6 +196,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; color: var(--in
 .dash-topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .dash-topbar .page-head { margin-bottom: 0; }
 .dash-date { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); background: var(--bg-card); border-radius: var(--r-md); padding: 9px 12px; color: var(--ink-2); font-size: 13px; font-weight: 700; }
+button.dash-date:hover { border-color: var(--brown-500); color: var(--brown-600); }
 .dash-welcome { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 .dash-welcome h2 { margin: 4px 0 2px; font-size: 22px; letter-spacing: 0; }
 .dash-welcome p { margin: 0; color: var(--ink-3); font-size: 13.5px; }
@@ -203,6 +204,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; color: var(--in
 .dash-actions button { width: 38px; height: 36px; display: grid; place-items: center; border: 0; border-left: 1px solid var(--border); background: var(--bg-card); color: var(--ink-2); }
 .dash-actions button:first-child { border-left: 0; }
 .dash-actions button:hover { color: var(--brown-700); background: var(--bg-subtle); }
+.dash-actions button:disabled { cursor: not-allowed; color: var(--ink-3); background: var(--bg-subtle); }
 .dash-kpis { margin-bottom: 16px; }
 .dash-kpis .kpi { min-height: 146px; padding-bottom: 0; }
 .mini-spark { height: 42px; display: flex; align-items: end; gap: 5px; margin: 14px -6px 0; }
@@ -221,6 +223,21 @@ input, select, textarea { font-family: inherit; font-size: 14px; color: var(--in
 .dash-readout div { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-subtle); padding: 13px 14px; min-width: 0; }
 .dash-readout span { display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin-bottom: 6px; }
 .dash-readout strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--ink); }
+.dash-presets { display: flex; flex-wrap: wrap; gap: 7px; margin: 14px 0 18px; }
+.dash-presets button { border: 1px solid var(--border-strong); background: var(--bg-subtle); border-radius: 999px; padding: 6px 11px; color: var(--ink-2); font-size: 12.5px; font-weight: 700; }
+.dash-presets button:hover { border-color: var(--brown-500); color: var(--brown-600); background: var(--cream); }
+.dash-report-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 16px 0; }
+.dash-report-grid > div { border: 1px solid var(--border); border-radius: var(--r-md); padding: 13px; background: var(--bg-subtle); }
+.dash-report-grid span { display: block; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin-bottom: 5px; }
+.dash-report-grid strong { font-size: 16px; font-variant-numeric: tabular-nums; }
+.dash-share-preview { margin: 14px 0 8px; padding: 14px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-subtle); color: var(--ink-2); font: 13px/1.55 var(--font); white-space: pre-wrap; }
+.dash-note-form { display: grid; grid-template-columns: 1fr 1.4fr auto; align-items: end; gap: 10px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.dash-note-form textarea { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); resize: vertical; }
+.dash-notes-list { display: flex; flex-direction: column; margin-top: 10px; }
+.dash-note { display: flex; gap: 14px; align-items: flex-start; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.dash-note:last-child { border-bottom: none; }
+.dash-note p { margin: 4px 0; color: var(--ink-2); font-size: 13px; white-space: pre-wrap; }
+.dash-note small { color: var(--ink-3); font-size: 11.5px; }
 .chart-card { padding: 18px 20px; min-height: 274px; }
 .chart-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
 .chart-head .card-title { margin-bottom: 4px; }
@@ -873,6 +890,8 @@ input, select, textarea { font-family: inherit; font-size: 14px; color: var(--in
   .clinical-summary { grid-template-columns: 1fr; }
   .bar-row { grid-template-columns: minmax(72px, 112px) 1fr; }
   .bar-value { grid-column: 2; text-align: left; }
+  .dash-report-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dash-note-form { grid-template-columns: 1fr; }
 }
 
 /* ============================================================

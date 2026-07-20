@@ -97,6 +97,11 @@ enum PackageBalanceStatus {
   anulado
 }
 
+enum ReportNoteStatus {
+  abierta
+  resuelta
+}
+
 // =============================================================================
 // TENANT RAÍZ
 // =============================================================================
@@ -126,6 +131,7 @@ model Clinic {
   paymentProvider  ClinicPaymentProvider?
   subscription     ClinicSubscription?
   subscriptionPayments PlatformSubscriptionPayment[]
+  reportNotes      ReportNote[]
 
   @@map("clinics")
 }
@@ -153,6 +159,7 @@ model User {
   auditLogs   AuditLog[]
   photosTaken Photo[]
   consentEvents ConsentEvent[]
+  reportNotes   ReportNote[]
 
   @@index([clinicId])
   @@index([role])
@@ -633,4 +640,23 @@ model AuditLog {
   @@index([cat])
   @@unique([clinicId, chainSequence])
   @@map("audit_logs")
+}
+
+model ReportNote {
+  id          String           @id @default(uuid()) @db.Uuid
+  clinicId    String           @map("clinic_id") @db.Uuid
+  clinic      Clinic           @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdById String           @map("created_by_id") @db.Uuid
+  createdBy   User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  title       String
+  body        String?          @db.Text
+  metricKey   String?          @map("metric_key")
+  periodFrom  DateTime?        @map("period_from") @db.Date
+  periodTo    DateTime?        @map("period_to") @db.Date
+  status      ReportNoteStatus @default(abierta)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  resolvedAt  DateTime?        @map("resolved_at") @db.Timestamptz
+
+  @@index([clinicId, status, createdAt])
+  @@map("report_notes")
 }

@@ -83,11 +83,25 @@ export interface Kpis {
     serviciosMasVendidos: ChartPoint[];
     pacientesNuevosPorMes: ChartPoint[];
   };
+  period?: { from: string; to: string };
 }
 
 export interface ChartPoint {
   label: string;
   value: number;
+}
+
+export interface ReportNote {
+  id: string;
+  title: string;
+  body: string | null;
+  metricKey: string | null;
+  periodFrom: string | null;
+  periodTo: string | null;
+  status: "abierta" | "resuelta";
+  createdAt: string;
+  resolvedAt: string | null;
+  createdByName: string;
 }
 
 export interface RxItem {
