@@ -9,6 +9,7 @@ import type { Consent } from "@/lib/types";
 import type { TabProps } from "./TabProps";
 import { NewConsentModal } from "../modals/NewConsentModal";
 import { SignConsentModal } from "../modals/SignConsentModal";
+import { downloadConsentPdf } from "../api";
 
 const STATUS_CLS: Record<string, string> = {
   pendiente: "bg-warn",
@@ -50,12 +51,13 @@ export function TabConsents({ patient, role }: TabProps) {
             <div key={c.id} className="card card-pad consent-card">
               <div className="consent-hd">
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <strong>{c.template?.title ?? "Consentimiento"}</strong>
+                  <strong>{c.templateTitle ?? c.template?.title ?? "Consentimiento"}</strong>
                   <span
-                    className={`consent-kind ${c.template?.kind === "imagen" ? "ck-imagen" : "ck-clinico"}`}
+                    className={`consent-kind ${(c.templateKind ?? c.template?.kind) === "imagen" ? "ck-imagen" : "ck-clinico"}`}
                   >
-                    <Icon name={c.template?.kind === "imagen" ? "camera" : "stetho"} size={12} />{" "}
-                    {c.template?.kind === "imagen" ? "Uso de imagen" : "Clínico"}
+                    <Icon name={(c.templateKind ?? c.template?.kind) === "imagen" ? "camera" : "stetho"} size={12} />{" "}
+                    {(c.templateKind ?? c.template?.kind) === "imagen" ? "Uso de imagen" : "Clínico"}
+                    {c.templateVersion ? ` · v${c.templateVersion}` : ""}
                   </span>
                 </div>
                 <Badge cls={STATUS_CLS[c.status] ?? "bg-neutral"}>{c.status}</Badge>
@@ -68,9 +70,10 @@ export function TabConsents({ patient, role }: TabProps) {
                   margin: "0 0 12px",
                 }}
               >
-                {c.template?.body}
+                {c.templateBody ?? c.template?.body}
               </p>
               {c.status === "firmado" && c.signedAt ? (
+                <>
                 <div className="consent-sig">
                   <div className="sig-frame">
                     <span className="signature">— firma archivada —</span>
@@ -84,6 +87,10 @@ export function TabConsents({ patient, role }: TabProps) {
                     </span>
                   </div>
                 </div>
+                <div style={{ marginTop: 12 }}>
+                  <Btn sm icon="file" onClick={() => downloadConsentPdf(c)}>Descargar PDF firmado</Btn>
+                </div>
+                </>
               ) : canWrite ? (
                 <Btn kind="primary" sm icon="pen" onClick={() => setSignTarget(c)}>
                   Capturar firma del paciente

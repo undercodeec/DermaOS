@@ -16,6 +16,7 @@ import {
   savePayphoneConfig,
 } from "./api";
 import type { AdminUser, NewAdminUserInput, PayphoneConfig, UpdateAdminUserInput } from "./api";
+import { ConsentTemplatesSettings } from "./ConsentTemplatesSettings";
 
 export function AdminView() {
   const { profile } = useAuth();
@@ -38,6 +39,7 @@ function AdminPanel() {
       </PageHead>
 
       <PayphoneSettings />
+      <ConsentTemplatesSettings />
       <UsersSection />
 
       {openCreate ? <CreateUserModal onClose={() => setOpenCreate(false)} /> : null}

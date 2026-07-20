@@ -1,15 +1,250 @@
 import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
 import { Router } from "express";
+import multer from "multer";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireAuth, requireModule, requireRole } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { encryptSecret } from "../lib/secret-box.js";
+import { extractConsentText } from "../lib/consent-documents.js";
 
 const router = Router();
 router.use(requireAuth, requireRole("admin"));
 router.use(requireModule("sistema"));
+
+const documentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+});
+
+const logoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 1024 * 1024 },
+});
+
+function serializeConsentTemplate(t: {
+  id: string;
+  kind: "clinico" | "imagen";
+  title: string;
+  procedureType: string;
+  body: string;
+  status: "borrador" | "aprobada" | "archivada";
+  seriesId: string;
+  version: number;
+  sourceName: string | null;
+  sourceMime: string | null;
+  sourceSha256: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  approvedAt: Date | null;
+  sourceFile?: Buffer | Uint8Array | null;
+}) {
+  const { sourceFile: _sourceFile, ...safe } = t;
+  return { ...safe, hasSource: !!t.sourceName };
+}
+
+const consentTemplateSchema = z.object({
+  kind: z.enum(["clinico", "imagen"]),
+  title: z.string().trim().min(3).max(180),
+  procedureType: z.string().trim().min(2).max(120),
+  body: z.string().trim().min(20).max(100_000),
+});
+
+router.get("/clinic-branding", async (req, res, next) => {
+  try {
+    const clinic = await prisma.clinic.findUnique({
+      where: { id: req.user!.clinicId },
+      select: { name: true, ruc: true, logoData: true },
+    });
+    if (!clinic) throw notFound("Clínica no encontrada");
+    res.json(clinic);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/clinic-branding/logo", logoUpload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) throw badRequest("Seleccione una imagen");
+    const mime = detectLogoMime(req.file.buffer);
+    if (!mime) throw badRequest("El logo debe ser PNG o JPEG");
+    const logoData = `data:${mime};base64,${req.file.buffer.toString("base64")}`;
+    await prisma.clinic.update({ where: { id: req.user!.clinicId }, data: { logoData } });
+    await audit(req, "Actualizó logo de la clínica", "sistema", "Identidad de documentos");
+    res.json({ logoData });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/clinic-branding/logo", async (req, res, next) => {
+  try {
+    await prisma.clinic.update({ where: { id: req.user!.clinicId }, data: { logoData: null } });
+    await audit(req, "Eliminó logo de la clínica", "sistema", "Identidad de documentos");
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/consent-templates", async (req, res, next) => {
+  try {
+    const list = await prisma.consentTemplate.findMany({
+      where: { clinicId: req.user!.clinicId },
+      select: {
+        id: true, kind: true, title: true, procedureType: true, body: true, status: true,
+        seriesId: true, version: true, sourceName: true, sourceMime: true, sourceSha256: true,
+        createdAt: true, updatedAt: true, approvedAt: true,
+      },
+      orderBy: [{ updatedAt: "desc" }],
+    });
+    res.json(list.map(serializeConsentTemplate));
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/consent-templates", async (req, res, next) => {
+  try {
+    const body = consentTemplateSchema.parse(req.body);
+    const created = await prisma.consentTemplate.create({ data: { ...body, clinicId: req.user!.clinicId } });
+    await audit(req, "Creó plantilla de consentimiento", "consentimiento", created.title);
+    res.status(201).json(serializeConsentTemplate(created));
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/consent-templates/import", documentUpload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) throw badRequest("Seleccione un documento PDF o DOCX");
+    const kind = z.enum(["clinico", "imagen"]).parse(req.body.kind ?? "clinico");
+    const extracted = await extractConsentText(req.file.buffer, req.file.mimetype, req.file.originalname);
+    const title = String(req.body.title || req.file.originalname.replace(/\.(pdf|docx)$/i, "")).trim();
+    const procedureType = String(req.body.procedureType || "General").trim();
+    const input = consentTemplateSchema.parse({ kind, title, procedureType, body: extracted });
+    const created = await prisma.consentTemplate.create({
+      data: {
+        ...input,
+        clinicId: req.user!.clinicId,
+        sourceName: req.file.originalname,
+        sourceMime: req.file.mimetype,
+        sourceSha256: crypto.createHash("sha256").update(req.file.buffer).digest("hex"),
+        sourceFile: req.file.buffer,
+      },
+    });
+    await audit(req, "Importó documento a plantilla", "consentimiento", `${created.title} · ${req.file.originalname}`);
+    res.status(201).json(serializeConsentTemplate(created));
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.patch("/consent-templates/:id", async (req, res, next) => {
+  try {
+    const current = await prisma.consentTemplate.findFirst({ where: { id: req.params.id, clinicId: req.user!.clinicId } });
+    if (!current) throw notFound("Plantilla no encontrada");
+    if (current.status !== "borrador") throw conflict("Una plantilla aprobada no se modifica; cree una nueva versión");
+    const body = consentTemplateSchema.parse(req.body);
+    const updated = await prisma.consentTemplate.update({ where: { id: current.id }, data: body });
+    await audit(req, "Editó borrador de consentimiento", "consentimiento", updated.title);
+    res.json(serializeConsentTemplate(updated));
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/consent-templates/:id/approve", async (req, res, next) => {
+  try {
+    const current = await prisma.consentTemplate.findFirst({ where: { id: req.params.id, clinicId: req.user!.clinicId } });
+    if (!current) throw notFound("Plantilla no encontrada");
+    if (current.status !== "borrador") throw conflict("Solo se pueden aprobar borradores");
+    const updated = await prisma.consentTemplate.update({
+      where: { id: current.id },
+      data: { status: "aprobada", approvedAt: new Date() },
+    });
+    await audit(req, "Aprobó plantilla de consentimiento", "consentimiento", `${updated.title} v${updated.version}`);
+    res.json(serializeConsentTemplate(updated));
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/consent-templates/:id/new-version", async (req, res, next) => {
+  try {
+    const current = await prisma.consentTemplate.findFirst({ where: { id: req.params.id, clinicId: req.user!.clinicId } });
+    if (!current) throw notFound("Plantilla no encontrada");
+    if (current.status === "borrador") throw conflict("Edite el borrador existente antes de crear otra versión");
+    const latest = await prisma.consentTemplate.aggregate({
+      where: { clinicId: req.user!.clinicId, seriesId: current.seriesId },
+      _max: { version: true },
+    });
+    const created = await prisma.consentTemplate.create({
+      data: {
+        clinicId: current.clinicId,
+        kind: current.kind,
+        title: current.title,
+        procedureType: current.procedureType,
+        body: current.body,
+        seriesId: current.seriesId,
+        version: (latest._max.version ?? current.version) + 1,
+        sourceName: current.sourceName,
+        sourceMime: current.sourceMime,
+        sourceSha256: current.sourceSha256,
+        sourceFile: current.sourceFile,
+      },
+    });
+    await audit(req, "Creó nueva versión de consentimiento", "consentimiento", `${created.title} v${created.version}`);
+    res.status(201).json(serializeConsentTemplate(created));
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/consent-templates/:id/archive", async (req, res, next) => {
+  try {
+    const current = await prisma.consentTemplate.findFirst({ where: { id: req.params.id, clinicId: req.user!.clinicId } });
+    if (!current) throw notFound("Plantilla no encontrada");
+    const updated = await prisma.consentTemplate.update({ where: { id: current.id }, data: { status: "archivada" } });
+    await audit(req, "Archivó plantilla de consentimiento", "consentimiento", updated.title);
+    res.json(serializeConsentTemplate(updated));
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/consent-templates/:id/source", async (req, res, next) => {
+  try {
+    const current = await prisma.consentTemplate.findFirst({ where: { id: req.params.id, clinicId: req.user!.clinicId } });
+    if (!current?.sourceFile || !current.sourceName) throw notFound("Documento original no encontrado");
+    res.setHeader("Content-Type", current.sourceMime || "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(current.sourceName)}`);
+    res.send(current.sourceFile);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/consent-templates/:id", async (req, res, next) => {
+  try {
+    const current = await prisma.consentTemplate.findFirst({ where: { id: req.params.id, clinicId: req.user!.clinicId } });
+    if (!current) throw notFound("Plantilla no encontrada");
+    if (current.status !== "borrador") throw conflict("Solo se pueden eliminar borradores; archive las plantillas aprobadas");
+    await prisma.consentTemplate.delete({ where: { id: current.id } });
+    await audit(req, "Eliminó borrador de consentimiento", "consentimiento", current.title);
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+});
+
+function detectLogoMime(buffer: Buffer) {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+  return null;
+}
 
 function serializePayphoneProvider(p: Awaited<ReturnType<typeof prisma.clinicPaymentProvider.findFirst>>) {
   if (!p) {

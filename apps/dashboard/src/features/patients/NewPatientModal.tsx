@@ -8,6 +8,7 @@ import { createPatient } from "./api";
 export function NewPatientModal({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [showPhototypeHelp, setShowPhototypeHelp] = useState(false);
   const [f, setF] = useState({
     first_name: "",
     last_name: "",
@@ -133,7 +134,25 @@ export function NewPatientModal({ onClose }: { onClose: () => void }) {
         />
       </Field>
       <div className="frow">
-        <Field label="Fototipo (Fitzpatrick)">
+        <Field
+          label={
+            <span className="field-label-with-help">
+              Fototipo (Fitzpatrick)
+              <button
+                type="button"
+                className="help-icon"
+                aria-label="Más información sobre el fototipo Fitzpatrick"
+                aria-describedby="phototype-help-tooltip"
+                onClick={() => setShowPhototypeHelp(true)}
+              >
+                !
+                <span id="phototype-help-tooltip" role="tooltip" className="help-tooltip">
+                  Clasificación de la reacción de la piel ante el sol. Haz clic para ver el detalle.
+                </span>
+              </button>
+            </span>
+          }
+        >
           <select value={f.skinType} onChange={upd("skinType")}>
             {(["I", "II", "III", "IV", "V", "VI"] as const).map((x) => (
               <option key={x} value={x}>
@@ -150,6 +169,29 @@ export function NewPatientModal({ onClose }: { onClose: () => void }) {
         <p style={{ color: "var(--err)", fontSize: 13 }}>
           {(m.error as Error).message ?? "Error al crear paciente"}
         </p>
+      ) : null}
+      {showPhototypeHelp ? (
+        <Modal title="Fototipo de piel (escala Fitzpatrick)" onClose={() => setShowPhototypeHelp(false)}>
+          <div className="phototype-help-content">
+            <p>
+              El fototipo clasifica la respuesta habitual de la piel a la exposición solar, principalmente si se
+              quema o se broncea. Sirve como referencia clínica para valorar el riesgo solar y planificar ciertos
+              tratamientos dermatológicos.
+            </p>
+            <ul>
+              <li><strong>I:</strong> piel muy clara; siempre se quema y no se broncea.</li>
+              <li><strong>II:</strong> piel clara; se quema con facilidad y se broncea poco.</li>
+              <li><strong>III:</strong> piel intermedia; a veces se quema y se broncea gradualmente.</li>
+              <li><strong>IV:</strong> piel morena clara; rara vez se quema y se broncea con facilidad.</li>
+              <li><strong>V:</strong> piel morena; casi nunca se quema y se broncea intensamente.</li>
+              <li><strong>VI:</strong> piel muy oscura; no suele quemarse por el sol y se pigmenta intensamente.</li>
+            </ul>
+            <p className="phototype-help-note">
+              Selecciona la opción que mejor describa la reacción usual de la piel del paciente al sol, no solo su
+              tono de piel actual.
+            </p>
+          </div>
+        </Modal>
       ) : null}
     </Modal>
   );

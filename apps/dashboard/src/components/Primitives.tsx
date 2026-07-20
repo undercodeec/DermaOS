@@ -22,7 +22,7 @@ export function Badge({ cls = "bg-neutral", children }: { cls?: string; children
   return <span className={`badge ${cls}`}>{children}</span>;
 }
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
+export function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <div className="field">
       <label>{label}</label>

@@ -8,7 +8,7 @@ import type { ConsentTemplate, Patient } from "@/lib/types";
 
 export function NewConsentModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
   const qc = useQueryClient();
-  const { data: tpls = [] } = useQuery({ queryKey: ["consent-templates"], queryFn: listConsentTemplates });
+  const { data: tpls = [], isLoading, isError } = useQuery({ queryKey: ["consent-templates"], queryFn: listConsentTemplates });
   const [tid, setTid] = useState("");
 
   const byKind = tpls.reduce<{ clinico: ConsentTemplate[]; imagen: ConsentTemplate[] }>(
@@ -65,6 +65,12 @@ export function NewConsentModal({ patient, onClose }: { patient: Patient; onClos
           )}
         </select>
       </Field>
+      {!isLoading && !isError && tpls.length === 0 ? (
+        <p className="muted" style={{ fontSize: 13, marginTop: -4 }}>
+          No hay plantillas aprobadas. Un administrador debe crear o importar una plantilla en Sistema y aprobarla.
+        </p>
+      ) : null}
+      {isError ? <p style={{ color: "var(--err)", fontSize: 13 }}>No se pudieron cargar las plantillas.</p> : null}
       {sel ? (
         <>
           <div

@@ -153,7 +153,18 @@ router.get("/professionals", async (req, res, next) => {
 router.get("/consent-templates", async (req, res, next) => {
   try {
     const list = await prisma.consentTemplate.findMany({
-      where: { clinicId: req.user!.clinicId },
+      where: { clinicId: req.user!.clinicId, status: "aprobada" },
+      select: {
+        id: true,
+        kind: true,
+        title: true,
+        procedureType: true,
+        body: true,
+        status: true,
+        seriesId: true,
+        version: true,
+        approvedAt: true,
+      },
       orderBy: { title: "asc" },
     });
     res.json(list);

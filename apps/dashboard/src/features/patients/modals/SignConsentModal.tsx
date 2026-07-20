@@ -110,16 +110,19 @@ export function SignConsentModal({
   const ok = !!sig && acepta;
 
   const m = useMutation({
-    mutationFn: () => signConsent(consent.id, sig ?? undefined),
+    mutationFn: () => signConsent(consent.id, sig!),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["consents", patient.id] });
       onClose();
     },
   });
 
-  const kindLabel = consent.template?.kind === "imagen" ? "Uso de imagen" : "Clínico";
-  const kindCls = consent.template?.kind === "imagen" ? "ck-imagen" : "ck-clinico";
-  const kindIcon = consent.template?.kind === "imagen" ? "camera" : "stetho";
+  const consentKind = consent.templateKind ?? consent.template?.kind ?? "clinico";
+  const consentTitle = consent.templateTitle ?? consent.template?.title ?? "Consentimiento";
+  const consentBody = consent.templateBody ?? consent.template?.body ?? "";
+  const kindLabel = consentKind === "imagen" ? "Uso de imagen" : "Clínico";
+  const kindCls = consentKind === "imagen" ? "ck-imagen" : "ck-clinico";
+  const kindIcon = consentKind === "imagen" ? "camera" : "stetho";
 
   return (
     <Modal
@@ -138,7 +141,7 @@ export function SignConsentModal({
       <div className={`consent-kind ${kindCls}`} style={{ marginBottom: 10 }}>
         <Icon name={kindIcon} size={12} /> {kindLabel}
       </div>
-      <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 4px" }}>{consent.template?.title}</p>
+      <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 4px" }}>{consentTitle}</p>
       <p
         style={{
           fontSize: 13,
@@ -153,7 +156,7 @@ export function SignConsentModal({
           background: "var(--bg-subtle)",
         }}
       >
-        {consent.template?.body}
+        {consentBody}
       </p>
 
       <label className="consent-check">

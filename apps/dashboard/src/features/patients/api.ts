@@ -105,11 +105,23 @@ export function deleteReceta(patientId: string, rid: string): Promise<null> {
 export function createConsent(patientId: string, templateId: string): Promise<Consent> {
   return api.post<Consent>(`/patients/${patientId}/consents`, { templateId });
 }
-export function signConsent(consentId: string, signaturePath?: string): Promise<Consent> {
-  return api.post<Consent>(`/consents/${consentId}/sign`, { signaturePath });
+export function signConsent(consentId: string, signaturePath: string): Promise<Consent> {
+  return api.post<Consent>(`/consents/${consentId}/sign`, { signaturePath, accepted: true });
 }
 export function listSignedConsents(patientId: string): Promise<Consent[]> {
   return api.get<Consent[]>(`/patients/${patientId}/consents?signed=1`);
+}
+export async function downloadConsentPdf(consent: Consent) {
+  const response = await api.raw(`/consents/${consent.id}/pdf`);
+  const blob = await response.blob();
+  const title = consent.templateTitle ?? consent.template?.title ?? "consentimiento";
+  const filename = `${title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "-")}.pdf`;
+  const href = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(href);
 }
 
 // ----- Procedures -----

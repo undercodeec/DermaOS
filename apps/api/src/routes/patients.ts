@@ -335,13 +335,27 @@ router.delete("/:id/recetas/:rid", requireModule("historia", "write"), async (re
 });
 
 // ----- Consents -----
+const publicConsentTemplateSelect = {
+  id: true,
+  kind: true,
+  title: true,
+  procedureType: true,
+  body: true,
+  status: true,
+  seriesId: true,
+  version: true,
+  approvedAt: true,
+} as const;
+
 router.get("/:id/consents", async (req, res, next) => {
   try {
+    const patient = await prisma.patient.findFirst({ where: { id: req.params.id, clinicId: req.user!.clinicId } });
+    if (!patient) throw notFound("Paciente no encontrado");
     const where: Prisma.ConsentWhereInput = { patientId: req.params.id };
     if (req.query.signed === "1") where.status = "firmado";
     const list = await prisma.consent.findMany({
       where,
-      include: { template: true },
+      include: { template: { select: publicConsentTemplateSelect } },
     });
     res.json(list);
   } catch (e) {
@@ -352,16 +366,24 @@ router.get("/:id/consents", async (req, res, next) => {
 const newConsentSchema = z.object({ templateId: z.string().uuid() });
 router.post("/:id/consents", requireModule("consentimientos", "write"), async (req, res, next) => {
   try {
-    const pat = await prisma.patient.findUnique({ where: { id: req.params.id } });
+    const pat = await prisma.patient.findFirst({ where: { id: req.params.id, clinicId: req.user!.clinicId } });
     if (!pat) throw notFound("Paciente no encontrado");
     const body = newConsentSchema.parse(req.body);
     const tpl = await prisma.consentTemplate.findFirst({
       where: { id: body.templateId, clinicId: req.user!.clinicId },
     });
-    if (!tpl) throw badRequest("Plantilla de consentimiento inválida");
+    if (!tpl || tpl.status !== "aprobada") throw badRequest("La plantilla no existe o todavía no está aprobada");
     const c = await prisma.consent.create({
-      data: { patientId: pat.id, templateId: tpl.id, status: "pendiente" },
-      include: { template: true },
+      data: {
+        patientId: pat.id,
+        templateId: tpl.id,
+        status: "pendiente",
+        templateTitle: tpl.title,
+        templateBody: tpl.body,
+        templateKind: tpl.kind,
+        templateVersion: tpl.version,
+      },
+      include: { template: { select: publicConsentTemplateSelect } },
     });
     await audit(req, "Generó consentimiento", "consentimiento", `${tpl.title} · ${pat.firstName} ${pat.lastName}`);
     res.status(201).json(c);

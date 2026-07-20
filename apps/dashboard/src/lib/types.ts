@@ -138,6 +138,10 @@ export interface ConsentTemplate {
   title: string;
   procedureType: string;
   body: string;
+  status?: "borrador" | "aprobada" | "archivada";
+  seriesId?: string;
+  version?: number;
+  approvedAt?: string | null;
 }
 
 export interface Consent {
@@ -148,6 +152,11 @@ export interface Consent {
   signedAt: string | null;
   signaturePath: string | null;
   procedureId: string | null;
+  templateTitle: string | null;
+  templateBody: string | null;
+  templateKind: ConsentKind | null;
+  templateVersion: number | null;
+  signedIp: string | null;
   template: ConsentTemplate | null;
 }
 

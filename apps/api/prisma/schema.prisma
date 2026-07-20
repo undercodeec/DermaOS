@@ -60,6 +60,12 @@ enum ConsentKind {
   imagen
 }
 
+enum ConsentTemplateStatus {
+  borrador
+  aprobada
+  archivada
+}
+
 enum PaymentStatus {
   pendiente
   pagado
@@ -97,6 +103,7 @@ model Clinic {
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   invoiceSequence Int @default(242) @map("invoice_sequence")
+  logoData        String?  @map("logo_data") @db.Text
 
   users            User[]
   patients         Patient[]
@@ -287,10 +294,21 @@ model ConsentTemplate {
   title         String
   procedureType String      @map("procedure_type")
   body          String
+  status        ConsentTemplateStatus @default(borrador)
+  seriesId      String      @default(uuid()) @map("series_id") @db.Uuid
+  version       Int         @default(1)
+  sourceName    String?     @map("source_name")
+  sourceMime    String?     @map("source_mime")
+  sourceSha256  String?     @map("source_sha256")
+  sourceFile    Bytes?      @map("source_file")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  approvedAt    DateTime?   @map("approved_at") @db.Timestamptz
 
   consents Consent[]
 
   @@index([clinicId])
+  @@unique([clinicId, seriesId, version])
   @@map("consent_templates")
 }
 
@@ -304,6 +322,11 @@ model Consent {
   signedAt       DateTime?       @map("signed_at") @db.Timestamptz
   signaturePath  String?         @map("signature_path")
   procedureId    String?         @map("procedure_id") @db.Uuid
+  templateTitle  String?         @map("template_title")
+  templateBody   String?         @map("template_body") @db.Text
+  templateKind   ConsentKind?    @map("template_kind")
+  templateVersion Int?           @map("template_version")
+  signedIp       String?         @map("signed_ip")
 
   @@index([patientId])
   @@map("consents")
