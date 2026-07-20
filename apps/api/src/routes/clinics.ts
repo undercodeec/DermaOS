@@ -82,11 +82,10 @@ router.post("/register", registerLimit, async (req, res, next) => {
     if (existing) throw conflict("El email ya esta registrado");
 
     const passwordHash = await bcrypt.hash(body.adminPassword, 12);
-    const requiresEmailVerification = env.NODE_ENV === "production";
     const userId = crypto.randomUUID();
-    const code = requiresEmailVerification ? generateLoginEmailCode() : null;
+    const code = generateLoginEmailCode();
     const expiresAt = new Date(Date.now() + env.AUTH_EMAIL_CODE_TTL_MINUTES * 60 * 1000);
-    if (code) await sendRegistrationEmailCode(adminEmail, code);
+    await sendRegistrationEmailCode(adminEmail, code);
 
     const result = await prisma.$transaction(async (tx) => {
       const clinic = await tx.clinic.create({
@@ -101,18 +100,18 @@ router.post("/register", registerLimit, async (req, res, next) => {
           passwordHash,
           role: "admin",
           mfaEnabled: false,
-          mfaSecret: code ? encodeRegistrationCodeState(userId, code, expiresAt) : null,
-          active: !requiresEmailVerification,
+          mfaSecret: encodeRegistrationCodeState(userId, code, expiresAt),
+          active: false,
         },
       });
       await tx.clinicSubscription.create({
         data: {
           clinicId: clinic.id,
-          status: requiresEmailVerification ? "pending_verification" : "trialing",
-          verifiedAt: requiresEmailVerification ? null : new Date(),
-          trialStartedAt: requiresEmailVerification ? null : new Date(),
-          trialEndsAt: requiresEmailVerification ? null : addDays(new Date(), TRIAL_DAYS),
-          allowedModules: requiresEmailVerification ? [] : ALL_MODULES,
+          status: "pending_verification",
+          verifiedAt: null,
+          trialStartedAt: null,
+          trialEndsAt: null,
+          allowedModules: [],
         },
       });
       await tx.auditLog.create({
@@ -121,33 +120,16 @@ router.post("/register", registerLimit, async (req, res, next) => {
           userId: user.id,
           action: "clinic.register",
           cat: "sistema",
-          label: requiresEmailVerification
-            ? "Pendiente de verificacion por email"
-            : "Demo de desarrollo activada sin verificacion por email",
+          label: "Pendiente de verificacion por email",
           ip: req.ip ?? null,
         },
       });
       return { clinic, user };
     });
 
-    if (requiresEmailVerification) {
-      res.status(201).json({
-        emailVerificationRequired: true,
-        emailMasked: maskEmail(result.user.email),
-      });
-      return;
-    }
-
-    const token = signToken({
-      sub: result.user.id,
-      email: result.user.email,
-      role: result.user.role,
-      clinicId: result.clinic.id,
-    });
-
     res.status(201).json({
-      token,
-      profile: serializeUser(result.user),
+      emailVerificationRequired: true,
+      emailMasked: maskEmail(result.user.email),
     });
   } catch (e) {
     next(e);
