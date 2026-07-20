@@ -23,6 +23,7 @@ const EMPTY_TEMPLATE: ConsentTemplateInput = {
   title: "",
   procedureType: "General",
   body: "",
+  allowedRoles: ["admin", "profesional"],
 };
 
 export function ConsentTemplatesSettings() {
@@ -50,6 +51,7 @@ export function ConsentTemplatesSettings() {
 
   return (
     <>
+      <ConsentGovernancePolicy />
       <ClinicBrandingSettings />
       <div className="section-head-row">
         <div>
@@ -80,7 +82,7 @@ export function ConsentTemplatesSettings() {
                 {templates.map((template) => (
                   <tr key={template.id}>
                     <td><strong>{template.title}</strong><div className="muted" style={{ fontSize: 12 }}>{template.procedureType}</div></td>
-                    <td>{template.kind === "imagen" ? "Uso de imagen" : "Clínico"}</td>
+                    <td>{template.kind === "imagen" ? "Uso de imagen" : "Clínico"}<div className="muted" style={{ fontSize: 11.5 }}>{template.allowedRoles.map(roleLabel).join(", ")}</div></td>
                     <td>v{template.version}</td>
                     <td><TemplateStatus status={template.status} /></td>
                     <td>
@@ -125,6 +127,35 @@ export function ConsentTemplatesSettings() {
         />
       ) : null}
       {importing ? <ImportTemplateModal onClose={() => setImporting(false)} /> : null}
+    </>
+  );
+}
+
+function ConsentGovernancePolicy() {
+  return (
+    <>
+      <p className="card-title" style={{ marginBottom: 12 }}>Política de documentos clínicos</p>
+      <div className="card card-pad consent-governance" style={{ marginBottom: 28 }}>
+        <div className="consent-governance-warning">
+          <strong>Los consentimientos firmados son inmutables.</strong>
+          <span>Las correcciones, adendas y revocaciones crean registros nuevos vinculados; el original nunca se sobrescribe ni elimina.</span>
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table className="tbl">
+            <thead><tr><th>Rol</th><th>Plantillas</th><th>Paciente</th><th>Después de firmar</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Administrador</strong></td><td>Crear, importar, editar borrador y aprobar</td><td>Generar y facilitar firma</td><td>Descargar, registrar adenda o revocación</td></tr>
+              <tr><td><strong>Profesional</strong></td><td>Sin edición</td><td>Generar, explicar y facilitar firma</td><td>Descargar, registrar adenda o revocación</td></tr>
+              <tr><td><strong>Esteticista</strong></td><td>Sin edición</td><td>Generar solo plantillas habilitadas y facilitar firma</td><td>Solo consultar y descargar</td></tr>
+              <tr><td><strong>Recepción</strong></td><td>Sin edición</td><td>Solo facilitar una firma ya preparada</td><td>Solo consultar y descargar</td></tr>
+              <tr><td><strong>Contador</strong></td><td>Sin acceso</td><td>Sin acceso</td><td>Sin acceso</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p className="muted" style={{ margin: "12px 0 0", fontSize: 12.5 }}>
+          Ningún rol puede modificar o eliminar un documento firmado. La firma corresponde siempre al paciente o a su representante legal identificado.
+        </p>
+      </div>
     </>
   );
 }
@@ -177,10 +208,10 @@ function ClinicBrandingSettings() {
 function TemplateEditorModal({ template, onClose }: { template: AdminConsentTemplate | null; onClose: () => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState<ConsentTemplateInput>(template ? {
-    kind: template.kind, title: template.title, procedureType: template.procedureType, body: template.body,
+    kind: template.kind, title: template.title, procedureType: template.procedureType, body: template.body, allowedRoles: template.allowedRoles,
   } : EMPTY_TEMPLATE);
   useEffect(() => {
-    if (template) setForm({ kind: template.kind, title: template.title, procedureType: template.procedureType, body: template.body });
+    if (template) setForm({ kind: template.kind, title: template.title, procedureType: template.procedureType, body: template.body, allowedRoles: template.allowedRoles });
   }, [template]);
   const mutation = useMutation({
     mutationFn: () => template ? updateConsentTemplate(template.id, form) : createConsentTemplate(form),
@@ -199,6 +230,13 @@ function TemplateEditorModal({ template, onClose }: { template: AdminConsentTemp
         <Field label="Procedimiento o categoría"><input value={form.procedureType} onChange={(e) => setForm({ ...form, procedureType: e.target.value })} placeholder="Ej. Toxina botulínica" /></Field>
       </div>
       <Field label="Título"><input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Consentimiento informado para…" /></Field>
+      <Field label="Roles autorizados para generar este documento">
+        <div className="template-role-options">
+          <label><input type="checkbox" checked disabled /> Administrador</label>
+          <label><input type="checkbox" checked={form.allowedRoles.includes("profesional")} onChange={(e) => setForm({ ...form, allowedRoles: toggleRole(form.allowedRoles, "profesional", e.target.checked) })} /> Profesional</label>
+          <label><input type="checkbox" checked={form.allowedRoles.includes("esteticista")} onChange={(e) => setForm({ ...form, allowedRoles: toggleRole(form.allowedRoles, "esteticista", e.target.checked) })} /> Esteticista</label>
+        </div>
+      </Field>
       <Field label="Contenido legal editable"><textarea className="legal-editor" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} placeholder="Escriba el contenido completo que leerá y firmará el paciente." /></Field>
       <p className="muted" style={{ fontSize: 12, marginTop: -7 }}>Al aprobar la plantilla, esta versión quedará bloqueada para proteger su integridad.</p>
       {mutation.isError ? <p className="form-error">{(mutation.error as Error).message}</p> : null}
@@ -212,8 +250,9 @@ function ImportTemplateModal({ onClose }: { onClose: () => void }) {
   const [kind, setKind] = useState<"clinico" | "imagen">("clinico");
   const [title, setTitle] = useState("");
   const [procedureType, setProcedureType] = useState("General");
+  const [allowEsthetician, setAllowEsthetician] = useState(false);
   const mutation = useMutation({
-    mutationFn: () => importConsentTemplate({ file: file!, kind, title, procedureType }),
+    mutationFn: () => importConsentTemplate({ file: file!, kind, title, procedureType, allowedRoles: ["admin", "profesional", ...(allowEsthetician ? ["esteticista" as const] : [])] }),
     onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: ["admin-consent-templates"] });
       onClose();
@@ -230,6 +269,10 @@ function ImportTemplateModal({ onClose }: { onClose: () => void }) {
         <Field label="Procedimiento o categoría"><input value={procedureType} onChange={(e) => setProcedureType(e.target.value)} /></Field>
       </div>
       <Field label="Título (opcional)"><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Si se deja vacío, se usa el nombre del archivo" /></Field>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 13 }}>
+        <input type="checkbox" checked={allowEsthetician} onChange={(e) => setAllowEsthetician(e.target.checked)} />
+        Permitir que esteticistas generen esta plantilla una vez aprobada
+      </label>
       <p className="muted" style={{ fontSize: 12.5 }}>El archivo original se conservará intacto. El texto extraído se guardará como borrador editable y deberá revisarse antes de aprobarse.</p>
       {mutation.isError ? <p className="form-error">{(mutation.error as Error).message}</p> : null}
     </Modal>
@@ -240,4 +283,13 @@ function TemplateStatus({ status }: { status: AdminConsentTemplate["status"] }) 
   const labels = { borrador: "Borrador", aprobada: "Aprobada", archivada: "Archivada" };
   const classes = { borrador: "bg-warn", aprobada: "bg-ok", archivada: "bg-neutral" };
   return <Badge cls={classes[status]}>{labels[status]}</Badge>;
+}
+
+function toggleRole(roles: ConsentTemplateInput["allowedRoles"], role: "profesional" | "esteticista", enabled: boolean) {
+  const next = enabled ? [...roles, role] : roles.filter((item) => item !== role);
+  return Array.from(new Set(["admin" as const, ...next]));
+}
+
+function roleLabel(role: ConsentTemplateInput["allowedRoles"][number]) {
+  return role === "admin" ? "Admin" : role === "profesional" ? "Profesional" : "Esteticista";
 }

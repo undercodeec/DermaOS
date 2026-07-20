@@ -136,7 +136,7 @@ PORT=4000
 | Pacientes (lista + ficha 7 tabs) | ✅ | ✅ lectura + escritura completa |
 | Historia: evolución + recetas | ✅ CRUD completo | ✅ crear + editar + eliminar |
 | Fotos | ✅ filesystem JWT | ✅ subida + slider + lightbox |
-| Consentimientos | ✅ | ✅ crear + firma canvas |
+| Consentimientos | ✅ plantillas versionadas + PDF firmado + hashes + eventos | ✅ administración, firma, descarga, adenda y revocación |
 | Paquetes/bonos | ✅ catálogo + venta + consumo auto | ✅ venta + abonos + historial |
 | Agenda | ✅ + cobertura paquete | ✅ semanal + estados + nueva cita |
 | Cobros / PayPhone | ✅ credenciales por clínica + API Link + webhook | ✅ generar + detalle + config admin |
@@ -158,6 +158,71 @@ PORT=4000
 | Multi-tenant | Rutas criticas validan IDs cruzados por `clinicId`: evolucion, recetas, procedimientos, paquetes y agenda. |
 | Auth runtime | `requireAuth` consulta usuario y clinica en BD en cada request; cambios de rol/desactivacion aplican aunque el JWT anterior no haya expirado. |
 | Superadmin global | Existe dashboard separado `/platform`, con login real `gerencia@undercodeec.com` + `PLATFORM_ADMIN_PASSWORD` desde `.env`, para gestionar clinicas, demos, modulos, suspension y links de suscripcion. |
+
+### Consentimientos digitales: integridad legal y permisos (2026-07-20)
+
+#### Principio operativo
+
+Un consentimiento firmado se considera un registro clínico inmutable. DERMA-OS no permite sobrescribir ni eliminar su texto, datos identificativos, firma o PDF. Una aclaración posterior se registra como `adenda` o `correccion`; el retiro de la autorización se registra como `revocacion`. Todos estos eventos conservan el documento original.
+
+ACESS describe el consentimiento informado como un proceso entre profesional y paciente: la información debe ser proporcionada por el profesional de salud, la decisión debe ser libre y voluntaria y el paciente puede revocar posteriormente su consentimiento. Referencias de diseño: [Consentimiento informado — ACESS](https://www.acess.gob.ec/consentimiento-informado/), [LOPDP — Registro Oficial 459](https://www.registroficial.gob.ec/quinto-suplemento-al-registro-oficial-no-459/) y [Reglamento General LOPDP — Registro Oficial 435](https://www.registroficial.gob.ec/tercer-suplemento-al-registro-oficial-no-435/).
+
+La implementación técnica ayuda a demostrar integridad y trazabilidad, pero los textos y procedimientos deben ser revisados por asesoría jurídica ecuatoriana especializada en salud y protección de datos antes del uso productivo.
+
+#### Flujo implementado
+
+1. El administrador crea una plantilla manual o importa PDF/DOCX.
+2. El documento fuente se conserva intacto con huella SHA-256 y el texto extraído se convierte en borrador.
+3. El administrador revisa y aprueba el borrador. Una versión aprobada queda bloqueada también mediante trigger PostgreSQL.
+4. Un rol clínico autorizado genera el documento para el paciente usando únicamente una plantilla aprobada.
+5. Al crear el documento se congelan nombre e identificación del paciente, clínica, título, tipo, versión y texto legal.
+6. El paciente lee, acepta y dibuja su firma; el usuario de la clínica únicamente facilita la captura y nunca firma en nombre del paciente.
+7. Al firmar se generan y almacenan:
+   - fecha/hora, IP, agente de usuario y usuario que facilitó la captura;
+   - hash SHA-256 del contenido normalizado;
+   - hash SHA-256 de la firma;
+   - PDF definitivo con logo y datos congelados;
+   - hash SHA-256 del PDF.
+8. El PDF firmado se almacena en PostgreSQL como evidencia final y no se regenera en descargas posteriores. Antes de descargarlo se verifica su hash.
+9. Adendas, correcciones y revocaciones se guardan en `consent_events`, encadenadas criptográficamente y protegidas contra `UPDATE` y `DELETE`.
+10. La auditoría nueva utiliza `previous_hash` y `entry_hash`, se serializa por clínica y también queda protegida contra modificaciones o eliminaciones.
+
+#### Matriz de autorización
+
+| Acción | Admin | Profesional | Esteticista | Recepción | Contador |
+|---|---:|---:|---:|---:|---:|
+| Crear/importar/editar borrador de plantilla | Sí | No | No | No | No |
+| Aprobar o archivar plantilla | Sí | No | No | No | No |
+| Generar consentimiento para paciente | Sí | Sí, si la plantilla lo autoriza | Solo en plantillas habilitadas expresamente | No | No |
+| Explicar riesgos y alternativas clínicas | Solo si además es responsable clínico | Sí | Solo dentro de su ámbito | No | No |
+| Facilitar captura de firma del paciente | Sí | Sí | Sí | Sí | No |
+| Consultar y descargar | Sí | Sí | Sí | Sí | No |
+| Registrar adenda, corrección o revocación | Sí | Sí | No | No | No |
+| Modificar o eliminar después de firmado | No | No | No | No | No |
+
+El personal de plataforma DERMA-OS no obtiene acceso ordinario a documentos clínicos mediante estas rutas. Cualquier futuro acceso excepcional de soporte deberá ser temporal, justificado, limitado al tenant y auditado como mecanismo `break-glass`.
+
+#### Controles de base de datos
+
+La migración `20260720010000_immutable_signed_consents` agrega:
+
+- evidencia final y hashes a `consents`;
+- `allowed_roles` por plantilla; por defecto solo `admin` y `profesional`, con habilitación explícita opcional para `esteticista`;
+- tabla append-only `consent_events`;
+- hashes encadenados en `audit_logs`;
+- trigger que impide modificar/eliminar consentimientos firmados o revocados;
+- trigger que impide cambiar contenido de plantillas aprobadas;
+- triggers que impiden actualizar/eliminar eventos y auditorías.
+
+La transición controlada `firmado → revocado` solo puede añadir estado, fecha, motivo y responsable de revocación; todos los campos del documento original deben permanecer idénticos. Un superusuario/propietario de PostgreSQL siempre tiene capacidad técnica para deshabilitar triggers, por lo que en producción la API debe usar una cuenta de base de datos sin privilegios de propietario y las migraciones deben ejecutarse con una cuenta separada.
+
+#### Estado de despliegue
+
+- Código, esquema y migración: implementados en el repositorio.
+- Pruebas automatizadas: incluyen generación, hash y extracción de PDF; deben ejecutarse antes de desplegar.
+- Base local de esta estación: migración pendiente porque las credenciales PostgreSQL actuales fueron rechazadas con `P1000`.
+- VPS: aplicar las migraciones `20260720000000_consent_template_workflow` y `20260720010000_immutable_signed_consents`, regenerar Prisma, reconstruir API/dashboard y reiniciar `derma-api`.
+- Antes del piloto: ejecutar prueba de alteración directa con el usuario de la API, descarga/verificación de PDF, revocación, aislamiento entre clínicas y restauración desde backup.
 
 ### Siguientes pasos de desarrollo - Fichas clinicas imprimibles en PDF
 
@@ -216,6 +281,7 @@ Flujo propuesto:
 ### Pendientes
 | Item | Prioridad |
 |------|-----------|
+| Aplicar migraciones `20260720000000_consent_template_workflow` y `20260720010000_immutable_signed_consents` en VPS, probar triggers con la cuenta de la API y verificar descarga/revocación | Alta — el código está listo, pero la evidencia inmutable no existe en producción hasta aplicar ambas migraciones |
 | Aplicar migración `20260718000000_harden_payment_and_redemption_integrity` en Supabase/Render después de revisar duplicados preexistentes | Alta — agrega unicidad de abonos/redenciones, secuencia de facturas e IDs Payphone |
 | Configurar y validar SMTP en Render | Alta - el registro ya exige verificacion por email automaticamente en `NODE_ENV=production`; falta prueba con proveedor real |
 | Agregar MFA al login del superadmin `/platform/login` | Alta - tiene password, JWT separado y rate limit, pero aun no segundo factor |

@@ -4,6 +4,7 @@ import mammoth from "mammoth";
 import pdfParse from "pdf-parse/lib/pdf-parse.js";
 import PDFDocument from "pdfkit";
 import { badRequest } from "./errors.js";
+import crypto from "node:crypto";
 
 const PDF_MIME = "application/pdf";
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -32,7 +33,7 @@ export async function extractConsentText(buffer: Buffer, mimetype: string, filen
 
 export interface ConsentPdfInput {
   clinic: { name: string; ruc: string | null; logoData: string | null };
-  patient: { firstName: string; lastName: string; idType: string; idNumber: string; birthDate: Date };
+  patient: { name: string; idType: string; idNumber: string; birthDate: Date };
   consent: {
     id: string;
     title: string;
@@ -42,6 +43,8 @@ export interface ConsentPdfInput {
     signedAt: Date | null;
     signedIp: string | null;
     signaturePath: string | null;
+    contentHash?: string | null;
+    signatureHash?: string | null;
   };
 }
 
@@ -85,7 +88,7 @@ export function buildConsentPdf(input: ConsentPdfInput): Promise<Buffer> {
     doc.fillColor("#1F2937").font("Helvetica-Bold").fontSize(10).text("DATOS DEL PACIENTE");
     doc.moveDown(0.35);
     doc.font("Helvetica").fontSize(10).text(
-      `${input.patient.firstName} ${input.patient.lastName} · ${input.patient.idType.toUpperCase()}: ${input.patient.idNumber}`,
+      `${input.patient.name} · ${input.patient.idType.toUpperCase()}: ${input.patient.idNumber}`,
     );
     doc.text(`Fecha de nacimiento: ${formatDate(input.patient.birthDate)}`);
     doc.moveDown(1.2);
@@ -115,13 +118,15 @@ export function buildConsentPdf(input: ConsentPdfInput): Promise<Buffer> {
     doc.moveTo(doc.x, doc.y).lineTo(doc.x + 220, doc.y).strokeColor("#6B7280").stroke();
     doc.moveDown(0.35);
     doc.font("Helvetica").fontSize(9).fillColor("#374151").text("Firma del paciente", { width: 220, align: "center" });
-    doc.text(`${input.patient.firstName} ${input.patient.lastName}`, { width: 220, align: "center" });
+    doc.text(input.patient.name, { width: 220, align: "center" });
     doc.moveDown(1);
     doc.fontSize(8).fillColor("#6B7280").text(
       `Firmado: ${input.consent.signedAt ? formatDateTime(input.consent.signedAt) : "Pendiente"}`
       + `${input.consent.signedIp ? ` · IP registrada: ${input.consent.signedIp}` : ""}`,
     );
     doc.text(`Identificador de documento: ${input.consent.id}`);
+    if (input.consent.contentHash) doc.text(`Huella de contenido (SHA-256): ${input.consent.contentHash}`);
+    if (input.consent.signatureHash) doc.text(`Huella de firma (SHA-256): ${input.consent.signatureHash}`);
 
     const pages = doc.bufferedPageRange();
     for (let i = pages.start; i < pages.start + pages.count; i += 1) {
@@ -135,6 +140,46 @@ export function buildConsentPdf(input: ConsentPdfInput): Promise<Buffer> {
     }
     doc.end();
   });
+}
+
+export function sha256(value: string | Buffer) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+export function consentContentHash(input: {
+  consentId: string;
+  clinicId: string;
+  clinicName: string;
+  clinicRuc: string | null;
+  patientId: string;
+  patientName: string;
+  patientIdType: string;
+  patientIdNumber: string;
+  patientBirthDate: Date;
+  templateId: string;
+  templateTitle: string;
+  templateBody: string;
+  templateKind: "clinico" | "imagen";
+  templateVersion: number | null;
+  signedAt: Date;
+}) {
+  return sha256(JSON.stringify({
+    consentId: input.consentId,
+    clinicId: input.clinicId,
+    clinicName: input.clinicName,
+    clinicRuc: input.clinicRuc,
+    patientId: input.patientId,
+    patientName: input.patientName,
+    patientIdType: input.patientIdType,
+    patientIdNumber: input.patientIdNumber,
+    patientBirthDate: input.patientBirthDate.toISOString().slice(0, 10),
+    templateId: input.templateId,
+    templateTitle: input.templateTitle,
+    templateBody: input.templateBody,
+    templateKind: input.templateKind,
+    templateVersion: input.templateVersion,
+    signedAt: input.signedAt.toISOString(),
+  }));
 }
 
 function dataUrlBuffer(value: string | null) {

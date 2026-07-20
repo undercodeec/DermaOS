@@ -161,3 +161,15 @@ export function roleCanWrite(role: Role, moduleId: ModuleId): boolean {
   const v = PERM[role]?.[moduleId];
   return !!v && WRITE_PERMS.has(v);
 }
+
+export function roleCanGenerateConsent(role: Role): boolean {
+  return role === "admin" || role === "profesional" || role === "esteticista";
+}
+
+export function roleCanCaptureConsentSignature(role: Role): boolean {
+  return role === "admin" || role === "recepcion" || role === "profesional" || role === "esteticista";
+}
+
+export function roleCanAddConsentEvent(role: Role): boolean {
+  return role === "admin" || role === "profesional";
+}

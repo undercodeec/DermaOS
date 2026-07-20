@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
-import { requireAuth, requireModule } from "../middleware/auth.js";
+import { requireAuth, requireModule, requireRole } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { calcInvoiceTotals, invoiceNumber, sriAccessKey } from "../lib/sri.js";
@@ -345,9 +345,44 @@ const publicConsentTemplateSelect = {
   seriesId: true,
   version: true,
   approvedAt: true,
+  allowedRoles: true,
 } as const;
 
-router.get("/:id/consents", async (req, res, next) => {
+const publicConsentSelect = {
+  id: true,
+  patientId: true,
+  templateId: true,
+  status: true,
+  signedAt: true,
+  procedureId: true,
+  templateTitle: true,
+  templateBody: true,
+  templateKind: true,
+  templateVersion: true,
+  signedIp: true,
+  signedUserAgent: true,
+  signedByUserId: true,
+  signedByUserName: true,
+  patientName: true,
+  patientIdType: true,
+  patientIdNumber: true,
+  patientBirthDate: true,
+  clinicName: true,
+  clinicRuc: true,
+  contentHash: true,
+  signatureHash: true,
+  pdfHash: true,
+  revokedAt: true,
+  revocationReason: true,
+  revokedByUserId: true,
+  template: { select: publicConsentTemplateSelect },
+  events: {
+    select: { id: true, kind: true, body: true, createdById: true, createdByName: true, at: true, ip: true, previousHash: true, chainSequence: true, hash: true },
+    orderBy: { at: "asc" as const },
+  },
+} as const;
+
+router.get("/:id/consents", requireModule("consentimientos"), async (req, res, next) => {
   try {
     const patient = await prisma.patient.findFirst({ where: { id: req.params.id, clinicId: req.user!.clinicId } });
     if (!patient) throw notFound("Paciente no encontrado");
@@ -355,7 +390,8 @@ router.get("/:id/consents", async (req, res, next) => {
     if (req.query.signed === "1") where.status = "firmado";
     const list = await prisma.consent.findMany({
       where,
-      include: { template: { select: publicConsentTemplateSelect } },
+      select: publicConsentSelect,
+      orderBy: { signedAt: "desc" },
     });
     res.json(list);
   } catch (e) {
@@ -364,15 +400,23 @@ router.get("/:id/consents", async (req, res, next) => {
 });
 
 const newConsentSchema = z.object({ templateId: z.string().uuid() });
-router.post("/:id/consents", requireModule("consentimientos", "write"), async (req, res, next) => {
+router.post(
+  "/:id/consents",
+  requireModule("consentimientos", "write"),
+  requireRole("admin", "profesional", "esteticista"),
+  async (req, res, next) => {
   try {
-    const pat = await prisma.patient.findFirst({ where: { id: req.params.id, clinicId: req.user!.clinicId } });
+    const pat = await prisma.patient.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+      include: { clinic: { select: { name: true, ruc: true } } },
+    });
     if (!pat) throw notFound("Paciente no encontrado");
     const body = newConsentSchema.parse(req.body);
     const tpl = await prisma.consentTemplate.findFirst({
       where: { id: body.templateId, clinicId: req.user!.clinicId },
     });
     if (!tpl || tpl.status !== "aprobada") throw badRequest("La plantilla no existe o todavía no está aprobada");
+    if (!tpl.allowedRoles.includes(req.user!.role)) throw badRequest("Su rol no está autorizado para generar esta plantilla");
     const c = await prisma.consent.create({
       data: {
         patientId: pat.id,
@@ -382,15 +426,22 @@ router.post("/:id/consents", requireModule("consentimientos", "write"), async (r
         templateBody: tpl.body,
         templateKind: tpl.kind,
         templateVersion: tpl.version,
+        patientName: `${pat.firstName} ${pat.lastName}`,
+        patientIdType: pat.idType,
+        patientIdNumber: pat.idNumber,
+        patientBirthDate: pat.birthDate,
+        clinicName: pat.clinic.name,
+        clinicRuc: pat.clinic.ruc,
       },
-      include: { template: { select: publicConsentTemplateSelect } },
+      select: publicConsentSelect,
     });
     await audit(req, "Generó consentimiento", "consentimiento", `${tpl.title} · ${pat.firstName} ${pat.lastName}`);
     res.status(201).json(c);
   } catch (e) {
     next(e);
   }
-});
+  },
+);
 
 // ----- Procedures -----
 router.get("/:id/procedures", async (req, res, next) => {

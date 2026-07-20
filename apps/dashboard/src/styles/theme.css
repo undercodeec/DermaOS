@@ -352,6 +352,23 @@ input, select, textarea { font-family: inherit; font-size: 14px; color: var(--in
 .table-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 210px; }
 .legal-editor { min-height: 300px !important; line-height: 1.55; font-family: inherit; }
 .form-error { color: var(--err); font-size: 13px; margin: 10px 0 0; }
+.consent-governance-warning, .consent-policy-card {
+  display: flex; gap: 10px; align-items: flex-start; border: 1px solid rgba(0, 172, 154, .25);
+  background: rgba(0, 172, 154, .07); border-radius: var(--r-sm); padding: 12px 14px;
+}
+.consent-governance-warning { flex-direction: column; margin-bottom: 14px; }
+.consent-policy-card { margin-bottom: 16px; color: var(--ink-2); }
+.consent-policy-card strong { color: var(--ink); }
+.consent-policy-card p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.45; }
+.consent-integrity { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 12px; font-size: 11.5px; color: var(--ink-2); }
+.consent-integrity code { background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 5px; padding: 3px 6px; font-size: 10.5px; }
+.consent-events { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
+.consent-events > div { display: grid; grid-template-columns: auto 1fr; gap: 6px 9px; padding: 9px 10px; border-left: 3px solid var(--border-strong); background: var(--bg-subtle); border-radius: 5px; font-size: 12.5px; }
+.consent-events small { grid-column: 2; color: var(--ink-3); }
+.consent-revoked-note { margin: 10px 0 0; padding: 9px 10px; background: rgba(185, 28, 28, .07); color: var(--err); border-radius: 6px; font-size: 12.5px; }
+.template-role-options { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; min-height: 34px; }
+.template-role-options label { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.template-role-options input { width: auto; }
 @media (max-width: 700px) {
   .section-head-row, .branding-card { align-items: stretch; flex-direction: column; }
   .clinic-logo-preview { width: 100%; }

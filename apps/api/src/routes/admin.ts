@@ -39,6 +39,7 @@ function serializeConsentTemplate(t: {
   createdAt: Date;
   updatedAt: Date;
   approvedAt: Date | null;
+  allowedRoles: Array<"admin" | "recepcion" | "profesional" | "esteticista" | "contador">;
   sourceFile?: Buffer | Uint8Array | null;
 }) {
   const { sourceFile: _sourceFile, ...safe } = t;
@@ -50,6 +51,9 @@ const consentTemplateSchema = z.object({
   title: z.string().trim().min(3).max(180),
   procedureType: z.string().trim().min(2).max(120),
   body: z.string().trim().min(20).max(100_000),
+  allowedRoles: z.array(z.enum(["admin", "profesional", "esteticista"]))
+    .min(1)
+    .refine((roles) => roles.includes("admin"), "El rol administrador es obligatorio"),
 });
 
 router.get("/clinic-branding", async (req, res, next) => {
@@ -97,6 +101,7 @@ router.get("/consent-templates", async (req, res, next) => {
         id: true, kind: true, title: true, procedureType: true, body: true, status: true,
         seriesId: true, version: true, sourceName: true, sourceMime: true, sourceSha256: true,
         createdAt: true, updatedAt: true, approvedAt: true,
+        allowedRoles: true,
       },
       orderBy: [{ updatedAt: "desc" }],
     });
@@ -124,7 +129,8 @@ router.post("/consent-templates/import", documentUpload.single("file"), async (r
     const extracted = await extractConsentText(req.file.buffer, req.file.mimetype, req.file.originalname);
     const title = String(req.body.title || req.file.originalname.replace(/\.(pdf|docx)$/i, "")).trim();
     const procedureType = String(req.body.procedureType || "General").trim();
-    const input = consentTemplateSchema.parse({ kind, title, procedureType, body: extracted });
+    const allowedRoles = req.body.allowedRoles ? JSON.parse(String(req.body.allowedRoles)) : ["admin", "profesional"];
+    const input = consentTemplateSchema.parse({ kind, title, procedureType, body: extracted, allowedRoles });
     const created = await prisma.consentTemplate.create({
       data: {
         ...input,
@@ -194,6 +200,7 @@ router.post("/consent-templates/:id/new-version", async (req, res, next) => {
         sourceMime: current.sourceMime,
         sourceSha256: current.sourceSha256,
         sourceFile: current.sourceFile,
+        allowedRoles: current.allowedRoles,
       },
     });
     await audit(req, "Creó nueva versión de consentimiento", "consentimiento", `${created.title} v${created.version}`);

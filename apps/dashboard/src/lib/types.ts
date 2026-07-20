@@ -142,6 +142,7 @@ export interface ConsentTemplate {
   seriesId?: string;
   version?: number;
   approvedAt?: string | null;
+  allowedRoles?: Role[];
 }
 
 export interface Consent {
@@ -157,7 +158,36 @@ export interface Consent {
   templateKind: ConsentKind | null;
   templateVersion: number | null;
   signedIp: string | null;
+  signedUserAgent: string | null;
+  signedByUserId: string | null;
+  signedByUserName: string | null;
+  patientName: string | null;
+  patientIdType: string | null;
+  patientIdNumber: string | null;
+  patientBirthDate: string | null;
+  clinicName: string | null;
+  clinicRuc: string | null;
+  contentHash: string | null;
+  signatureHash: string | null;
+  pdfHash: string | null;
+  revokedAt: string | null;
+  revocationReason: string | null;
+  revokedByUserId: string | null;
+  events: ConsentEvent[];
   template: ConsentTemplate | null;
+}
+
+export interface ConsentEvent {
+  id: string;
+  kind: "adenda" | "correccion" | "revocacion";
+  body: string;
+  createdById: string | null;
+  createdByName: string;
+  at: string;
+  ip: string | null;
+  previousHash: string | null;
+  chainSequence: number;
+  hash: string;
 }
 
 export interface Procedure {

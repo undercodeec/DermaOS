@@ -66,6 +66,12 @@ enum ConsentTemplateStatus {
   archivada
 }
 
+enum ConsentEventKind {
+  adenda
+  correccion
+  revocacion
+}
+
 enum PaymentStatus {
   pendiente
   pagado
@@ -146,6 +152,7 @@ model User {
 
   auditLogs   AuditLog[]
   photosTaken Photo[]
+  consentEvents ConsentEvent[]
 
   @@index([clinicId])
   @@index([role])
@@ -304,6 +311,7 @@ model ConsentTemplate {
   createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz
   approvedAt    DateTime?   @map("approved_at") @db.Timestamptz
+  allowedRoles  Role[]      @default([admin, profesional]) @map("allowed_roles")
 
   consents Consent[]
 
@@ -327,9 +335,47 @@ model Consent {
   templateKind   ConsentKind?    @map("template_kind")
   templateVersion Int?           @map("template_version")
   signedIp       String?         @map("signed_ip")
+  signedUserAgent String?        @map("signed_user_agent")
+  signedByUserId String?         @map("signed_by_user_id") @db.Uuid
+  signedByUserName String?       @map("signed_by_user_name")
+  patientName    String?         @map("patient_name")
+  patientIdType  String?         @map("patient_id_type")
+  patientIdNumber String?        @map("patient_id_number")
+  patientBirthDate DateTime?     @map("patient_birth_date") @db.Date
+  clinicName     String?         @map("clinic_name")
+  clinicRuc      String?         @map("clinic_ruc")
+  contentHash    String?         @map("content_hash")
+  signatureHash  String?         @map("signature_hash")
+  pdfHash        String?         @map("pdf_hash")
+  finalPdf       Bytes?          @map("final_pdf")
+  revokedAt      DateTime?       @map("revoked_at") @db.Timestamptz
+  revocationReason String?       @map("revocation_reason")
+  revokedByUserId String?        @map("revoked_by_user_id") @db.Uuid
+
+  events ConsentEvent[]
 
   @@index([patientId])
   @@map("consents")
+}
+
+model ConsentEvent {
+  id            String           @id @default(uuid()) @db.Uuid
+  consentId     String           @map("consent_id") @db.Uuid
+  consent       Consent          @relation(fields: [consentId], references: [id], onDelete: Restrict)
+  kind          ConsentEventKind
+  body          String           @db.Text
+  createdById   String?          @map("created_by_id") @db.Uuid
+  createdBy     User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdByName String           @map("created_by_name")
+  at            DateTime         @default(now()) @db.Timestamptz
+  ip            String?
+  previousHash  String?          @map("previous_hash")
+  chainSequence Int              @map("chain_sequence")
+  hash          String
+
+  @@index([consentId, at])
+  @@unique([consentId, chainSequence])
+  @@map("consent_events")
 }
 
 model Procedure {
@@ -577,10 +623,14 @@ model AuditLog {
   label    String   @default("")
   at       DateTime @default(now()) @db.Timestamptz
   ip       String?
+  previousHash String? @map("previous_hash")
+  entryHash    String? @map("entry_hash")
+  chainSequence Int?   @map("chain_sequence")
 
   @@index([clinicId])
   @@index([at])
   @@index([userId])
   @@index([cat])
+  @@unique([clinicId, chainSequence])
   @@map("audit_logs")
 }

@@ -58,6 +58,7 @@ export interface AdminConsentTemplate {
   createdAt: string;
   updatedAt: string;
   approvedAt: string | null;
+  allowedRoles: Array<"admin" | "profesional" | "esteticista">;
 }
 
 export interface ConsentTemplateInput {
@@ -65,6 +66,7 @@ export interface ConsentTemplateInput {
   title: string;
   procedureType: string;
   body: string;
+  allowedRoles: Array<"admin" | "profesional" | "esteticista">;
 }
 
 export interface SavePayphoneConfigInput {
@@ -169,6 +171,7 @@ export function importConsentTemplate(input: Omit<ConsentTemplateInput, "body"> 
   data.append("kind", input.kind);
   data.append("title", input.title);
   data.append("procedureType", input.procedureType);
+  data.append("allowedRoles", JSON.stringify(input.allowedRoles));
   return api.post<AdminConsentTemplate>("/admin/consent-templates/import", data);
 }
 

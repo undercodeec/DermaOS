@@ -10,7 +10,7 @@ El rol `admin` configura el logo y administra las plantillas desde **Sistema**.
 4. Aprobar el borrador. Una versión aprobada queda bloqueada.
 5. Para cambiar una versión aprobada, usar **Nueva versión**, editar el nuevo borrador y aprobarlo.
 
-Solo las plantillas aprobadas aparecen al generar un consentimiento para un paciente.
+Solo las plantillas aprobadas y autorizadas para el rol activo aparecen al generar un consentimiento. Por defecto pueden generarlas `admin` y `profesional`; el administrador puede habilitar expresamente una plantilla para `esteticista`. `recepcion` solo facilita la firma de un documento previamente preparado y `contador` no tiene acceso.
 
 ## Firma y PDF
 
@@ -24,9 +24,11 @@ La firma exige la aceptación expresa y una firma manuscrita en pantalla. Se reg
 - texto legal congelado;
 - firma manuscrita, fecha, IP e identificador del documento.
 
+El PDF definitivo se almacena al firmar junto con las huellas SHA-256 del contenido, firma y PDF. Los registros firmados quedan bloqueados mediante triggers PostgreSQL. Las adendas, correcciones y revocaciones se agregan como eventos encadenados; nunca modifican el original.
+
 ## Base de datos
 
-Antes de iniciar la API debe aplicarse la migración `20260720000000_consent_template_workflow` y regenerarse Prisma:
+Antes de iniciar la API deben aplicarse las migraciones `20260720000000_consent_template_workflow` y `20260720010000_immutable_signed_consents`, y regenerarse Prisma:
 
 ```powershell
 pnpm --filter @derma-os/api exec prisma migrate deploy

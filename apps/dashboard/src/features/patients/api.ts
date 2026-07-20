@@ -123,6 +123,12 @@ export async function downloadConsentPdf(consent: Consent) {
   anchor.click();
   URL.revokeObjectURL(href);
 }
+export function createConsentEvent(
+  consentId: string,
+  input: { kind: "adenda" | "correccion" | "revocacion"; body: string },
+) {
+  return api.post(`/consents/${consentId}/events`, input);
+}
 
 // ----- Procedures -----
 export interface NewProcedureInput {
