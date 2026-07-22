@@ -23,6 +23,7 @@
 - Payphone real y la politica/prueba de respaldos se difieren explicitamente hasta la etapa final previa al piloto.
 - Se agrego `.github/workflows/ci.yml`: PostgreSQL 16 efimero, migraciones, typecheck, lint, 20 pruebas unitarias, suite HTTP/BD multi-clinica y build de produccion.
 - Se agrego `scripts/verify-vps.sh` para comprobar repositorio limpio, commit activo, migraciones, servicio systemd, `/health`, headers de seguridad, CORS y URLs publicas opcionales.
+- La automatizacion fue publicada mediante `c187d7c ci: automatizar validacion integral y verificacion VPS`.
 
 ### Ficha clinica consolidada e imprimible
 
@@ -74,13 +75,13 @@
 
 ### Punto exacto de reanudacion
 
-1. Revisar y publicar el workflow CI y el verificador VPS agregados en esta sesion.
-2. Ejecutar el workflow en GitHub y corregir cualquier diferencia exclusiva del runner si aparece.
+1. Confirmar que el workflow del commit `c187d7c` termina correctamente en GitHub Actions y corregir cualquier diferencia exclusiva del runner si aparece.
+2. Obtener `c187d7c` en la VPS y ejecutar `scripts/verify-vps.sh` con las URLs publicas para guardar una verificacion operativa reproducible.
 3. Validar MFA de `/platform` con el SMTP ya operativo y revisar el dashboard interno antes del piloto.
 4. Definir el diseño PDF definitivo/historico y el flujo opcional usuario/profesional.
 5. Mantener Payphone real y respaldos/restauracion como tareas finales expresamente diferidas.
 
-El desarrollo base fue publicado mediante `8280dc1 feat: consolidar ficha clinica y seguridad multi-tenant`; la correccion posterior de aislamiento y fotos corresponde a `a0779fc fix: aislar sesiones y gestionar fotos clinicas`. `AGENTS.md` sigue sin seguimiento y no forma parte del desarrollo funcional.
+El desarrollo base fue publicado mediante `8280dc1 feat: consolidar ficha clinica y seguridad multi-tenant`; la correccion posterior de aislamiento y fotos corresponde a `a0779fc fix: aislar sesiones y gestionar fotos clinicas`; y la automatizacion operativa a `c187d7c ci: automatizar validacion integral y verificacion VPS`. `AGENTS.md` sigue sin seguimiento y no forma parte del desarrollo funcional.
 
 ---
 
@@ -107,7 +108,8 @@ El desarrollo base fue publicado mediante `8280dc1 feat: consolidar ficha clinic
 
 - Rama actual: `main`.
 - Ultimo commit funcional: `a0779fc fix: aislar sesiones y gestionar fotos clinicas` (`main`; publicacion en `origin/main` realizada en esta sesion).
-- La publicacion del codigo no implica despliegue: las migraciones y variables nuevas siguen pendientes de aplicar y validar en la VPS.
+- Ultimo commit de automatizacion: `c187d7c ci: automatizar validacion integral y verificacion VPS`.
+- La aplicacion y las 15 migraciones fueron confirmadas en la VPS; publicar el workflow y el verificador no requiere una migracion ni reiniciar la API.
 - Prisma validate/generate: OK.
 - Migraciones sobre PostgreSQL 16 vacio: 15/15 aplicadas y sin deriva respecto de `schema.prisma`.
 - Barrera multi-tenant: relaciones directas e indirectas cruzadas fueron rechazadas por PostgreSQL.
@@ -517,7 +519,7 @@ Flujo propuesto:
 |------|-----------|
 | Validar MFA de `/platform` con SMTP real en VPS | Alta — SMTP, registro y recuperación ya funcionan; falta confirmar el challenge del superadmin |
 | Validar dashboard interno `/platform` con `PLATFORM_REGISTER_KEY` antes de ventas piloto | Alta — controla demos y accesos |
-| Activar y observar el primer workflow CI en GitHub | Alta — workflow con PostgreSQL efímero implementado localmente; falta publicarlo y confirmar el runner |
+| Confirmar el primer workflow CI en GitHub | Alta — workflow con PostgreSQL efimero publicado en `c187d7c`; falta observar y confirmar el runner |
 | Definir si el segundo factor clinico seguira por email o si se reimplementara TOTP | Media — TOTP pertenece al flujo historico y no esta conectado a la UI/rutas actuales |
 | Definir flujo usuario/profesional | Media - hoy son entidades separadas; opcionalmente agregar "crear profesional asociado" al crear usuario clinico |
 | Vigilar y dividir el bundle principal del dashboard si vuelve a crecer | Baja — build actual: 449.69 kB minificado / 127.17 kB gzip |
