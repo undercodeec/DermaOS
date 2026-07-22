@@ -5,6 +5,7 @@ import { prisma } from "../db.js";
 import { requireAuth, requireModule } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
 import { conflict, notFound } from "../lib/errors.js";
+import { acquireTransactionLock } from "../lib/db-locks.js";
 
 const router = Router();
 router.use(requireAuth, requireModule("paquetes"));
@@ -93,9 +94,7 @@ router.patch("/:id", requireModule("paquetes", "write"), async (req, res, next) 
       if (!svc) throw notFound("Servicio no encontrado");
     }
     const pk = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw(
-        Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`package:${cur.id}`}))`,
-      );
+      await acquireTransactionLock(tx, `package:${cur.id}`);
       if (changesService) {
         const sold = await tx.packageBalance.count({ where: { packageId: cur.id } });
         if (sold > 0) {

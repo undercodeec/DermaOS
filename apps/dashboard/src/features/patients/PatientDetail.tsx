@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Icon } from "@/components/icons";
@@ -14,6 +15,7 @@ import { TabFotos } from "./tabs/TabFotos";
 import { TabConsents } from "./tabs/TabConsents";
 import { TabProcs } from "./tabs/TabProcs";
 import { TabPaquetes } from "./tabs/TabPaquetes";
+import { ClinicalFileModal } from "./ClinicalFileModal";
 // import { TabFacturas } from "./tabs/TabFacturas"; // INVOICES_ENABLED
 
 const TABS = [
@@ -45,6 +47,7 @@ export function PatientDetail() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const role = profile?.role ?? "admin";
+  const [clinicalFileOpen, setClinicalFileOpen] = useState(false);
 
   const { data: patient, isLoading } = useQuery({
     queryKey: ["patient", id],
@@ -107,13 +110,20 @@ export function PatientDetail() {
             {patient.id_number} · {patient.city ?? "-"} · {patient.phone ?? "-"}
           </p>
         </div>
-        <div className="chips">
-          <Badge cls="bg-brand">Fototipo {patient.background.skinType}</Badge>
-          {patient.background.allergies.map((a) => (
-            <Badge key={a} cls="bg-err">
-              <Icon name="alert" size={12} /> {a}
-            </Badge>
-          ))}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10 }}>
+          {(role === "admin" || role === "profesional") ? (
+            <button className="btn btn-primary btn-sm" onClick={() => setClinicalFileOpen(true)}>
+              <Icon name="file" size={14} /> Ficha clínica
+            </button>
+          ) : null}
+          <div className="chips">
+            <Badge cls="bg-brand">Fototipo {patient.background.skinType}</Badge>
+            {patient.background.allergies.map((a) => (
+              <Badge key={a} cls="bg-err">
+                <Icon name="alert" size={12} /> {a}
+              </Badge>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -136,6 +146,7 @@ export function PatientDetail() {
           El rol <strong>{ROLES[role].label}</strong> no puede abrir esta seccion. Intento registrado en la auditoria.
         </NoAccess>
       )}
+      {clinicalFileOpen ? <ClinicalFileModal patient={patient} role={role} onClose={() => setClinicalFileOpen(false)} /> : null}
     </div>
   );
 }

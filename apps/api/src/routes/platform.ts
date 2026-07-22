@@ -3,7 +3,13 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
-import { requirePlatformAuth, signPlatformToken, verifyPlatformCredentials } from "../middleware/platformKey.js";
+import {
+  requirePlatformAuth,
+  signPlatformMfaChallenge,
+  signPlatformToken,
+  verifyPlatformCredentials,
+  verifyPlatformMfaChallenge,
+} from "../middleware/platformKey.js";
 import { badRequest, notFound, unauthorized } from "../lib/errors.js";
 import {
   ALL_MODULES,
@@ -16,12 +22,15 @@ import {
 import { createPayphoneLink, newClientTransactionId } from "../lib/payphone.js";
 import { appendAuditLog, recordAudit } from "../lib/audit.js";
 import { ipAndEmailKey, rateLimit } from "../middleware/rateLimit.js";
+import { acquireTransactionLock } from "../lib/db-locks.js";
+import { generateLoginEmailCode, sendPlatformLoginEmailCode } from "../lib/login-email.js";
 
 const router = Router();
 const MAX_TRIAL_DAYS = 30;
 const MAX_SUBSCRIPTION_MONTHS = 24;
 const MAX_SUBSCRIPTION_AMOUNT = 10000;
 const platformLoginLimit = rateLimit({ windowMs: 15 * 60_000, max: 5, key: ipAndEmailKey });
+const platformVerifyLimit = rateLimit({ windowMs: 15 * 60_000, max: 10, key: (req) => req.ip ?? "unknown" });
 
 async function auditPlatform(req: Request, clinicId: string, action: string, label: string) {
   await recordAudit({
@@ -38,6 +47,15 @@ const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
+const verifyEmailSchema = z.object({
+  challengeToken: z.string().min(1),
+  emailCode: z.string().regex(/^\d{6}$/),
+});
+
+function maskEmail(email: string) {
+  const [local, domain] = email.split("@");
+  return `${local.slice(0, 2)}${"*".repeat(Math.max(local.length - 2, 1))}@${domain}`;
+}
 
 const notificationSchema = z.object({
   Amount: z.number().int().nonnegative(),
@@ -81,9 +99,7 @@ router.post("/payphone/NotificacionPago", async (req, res) => {
       });
       if (claimed.count !== 1) return;
 
-      await tx.$queryRaw(
-        Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`subscription:${pay.clinicId}`}))`,
-      );
+      await acquireTransactionLock(tx, `subscription:${pay.clinicId}`);
       const sub = await tx.clinicSubscription.findUnique({ where: { clinicId: pay.clinicId } });
       const base = sub?.subscriptionEndsAt && sub.subscriptionEndsAt > now ? sub.subscriptionEndsAt : now;
       await tx.clinicSubscription.upsert({
@@ -122,18 +138,26 @@ router.post("/login", platformLoginLimit, async (req, res, next) => {
       throw unauthorized("Credenciales de superadmin invalidas");
     }
 
-    // TODO: Reactivar validacion por email antes de entrar a produccion:
-    // 1. Generar codigo temporal asociado a env.PLATFORM_ADMIN_EMAIL.
-    // 2. Enviar el codigo por SMTP.
-    // 3. Responder { emailVerificationRequired: true } hasta que /platform/verify-email confirme el codigo.
-    // 4. Emitir el token solo despues de verificar el email en cada ingreso.
-
+    const code = generateLoginEmailCode();
+    await sendPlatformLoginEmailCode(env.PLATFORM_ADMIN_EMAIL, code);
     res.json({
-      token: signPlatformToken(env.PLATFORM_ADMIN_EMAIL),
-      profile: {
-        email: env.PLATFORM_ADMIN_EMAIL,
-        role: "superadmin",
-      },
+      emailVerificationRequired: true,
+      emailMasked: maskEmail(env.PLATFORM_ADMIN_EMAIL),
+      challengeToken: signPlatformMfaChallenge(env.PLATFORM_ADMIN_EMAIL, code),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/verify-email", platformVerifyLimit, async (req, res, next) => {
+  try {
+    const body = verifyEmailSchema.parse(req.body);
+    const email = verifyPlatformMfaChallenge(body.challengeToken, body.emailCode);
+    if (!email) throw unauthorized("Codigo de superadmin invalido, expirado o ya utilizado");
+    res.json({
+      token: signPlatformToken(email),
+      profile: { email, role: "superadmin" },
     });
   } catch (e) {
     next(e);
@@ -282,9 +306,7 @@ router.post("/clinics/:id/extend", async (req, res, next) => {
     if (!clinic) throw notFound("Clinica no encontrada");
     const now = new Date();
     await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw(
-        Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`subscription:${clinic.id}`}))`,
-      );
+      await acquireTransactionLock(tx, `subscription:${clinic.id}`);
       const current = await tx.clinicSubscription.findUnique({ where: { clinicId: clinic.id } });
       const base = current?.subscriptionEndsAt && current.subscriptionEndsAt > now
         ? current.subscriptionEndsAt

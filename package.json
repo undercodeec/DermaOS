@@ -11,6 +11,7 @@
     "preview": "pnpm --filter @derma-os/dashboard preview",
     "lint": "pnpm --filter @derma-os/dashboard lint",
     "typecheck": "pnpm -r typecheck",
+    "test:integration": "pnpm --filter @derma-os/api test:integration",
     "db:generate": "pnpm --filter @derma-os/api db:generate",
     "db:migrate": "pnpm --filter @derma-os/api db:migrate",
     "db:reset": "pnpm --filter @derma-os/api db:reset",

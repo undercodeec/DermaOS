@@ -2,6 +2,7 @@ import { prisma } from "../db.js";
 import type { Request } from "express";
 import crypto from "node:crypto";
 import { Prisma } from "@prisma/client";
+import { acquireTransactionLock } from "./db-locks.js";
 
 export type AuditCat =
   | "sesion" | "historia" | "fotos" | "consentimiento" | "facturacion"
@@ -22,7 +23,7 @@ export async function appendAuditLog(tx: Prisma.TransactionClient, entry: AuditE
   const at = entry.at ?? new Date();
   const label = entry.label ?? "";
   const ip = entry.ip ?? null;
-  await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${entry.clinicId}))`);
+  await acquireTransactionLock(tx, entry.clinicId);
   const previous = await tx.auditLog.findFirst({
     where: { clinicId: entry.clinicId, entryHash: { not: null } },
     orderBy: { chainSequence: "desc" },

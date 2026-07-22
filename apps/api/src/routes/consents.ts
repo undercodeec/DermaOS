@@ -14,6 +14,7 @@ import {
   isValidPngSignatureDataUrl,
   sha256,
 } from "../lib/consent-documents.js";
+import { acquireTransactionLock } from "../lib/db-locks.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -258,7 +259,7 @@ router.post(
       const at = new Date();
       const id = crypto.randomUUID();
       const event = await prisma.$transaction(async (tx) => {
-        await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${consent.id}))`);
+        await acquireTransactionLock(tx, consent.id);
         const latest = await tx.consentEvent.findFirst({ where: { consentId: consent.id }, orderBy: { chainSequence: "desc" } });
         const previousHash = latest?.hash ?? consent.contentHash ?? null;
         const chainSequence = (latest?.chainSequence ?? 0) + 1;
@@ -277,6 +278,7 @@ router.post(
         const created = await tx.consentEvent.create({
           data: {
             id,
+            clinicId: req.user!.clinicId,
             consentId: consent.id,
             kind: input.kind,
             body: input.body,

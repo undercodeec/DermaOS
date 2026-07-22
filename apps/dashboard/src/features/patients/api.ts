@@ -1,6 +1,8 @@
 import { api } from "@/lib/api";
 import type {
   ClinicalMetrics,
+  ClinicalFile,
+  ClinicalFileOptions,
   ClinicalRecord,
   Consent,
   ConsentTemplate,
@@ -32,6 +34,20 @@ export function getPatient(id: string): Promise<Patient | null> {
 
 export function getPatientCounts(id: string): Promise<PatientCounts> {
   return api.get<PatientCounts>(`/patients/${id}/counts`);
+}
+
+export function getClinicalFile(id: string, options: ClinicalFileOptions): Promise<ClinicalFile> {
+  const query = new URLSearchParams();
+  if (options.from) query.set("from", options.from);
+  if (options.to) query.set("to", options.to);
+  query.set("includeEvolutions", options.includeEvolutions ? "1" : "0");
+  query.set("includePrescriptions", options.includePrescriptions ? "1" : "0");
+  query.set("includeProcedures", options.includeProcedures ? "1" : "0");
+  query.set("includeConsents", options.includeConsents ? "1" : "0");
+  query.set("includePhotos", options.includePhotos ? "1" : "0");
+  if (options.signerProfessionalId) query.set("signerProfessionalId", options.signerProfessionalId);
+  if (options.purpose) query.set("purpose", options.purpose);
+  return api.get<ClinicalFile>(`/patients/${id}/clinical-file?${query.toString()}`);
 }
 
 export interface NewPatientInput {

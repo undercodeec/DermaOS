@@ -8,8 +8,11 @@ export interface PlatformProfile {
 }
 
 export interface PlatformLoginResponse {
-  token: string;
-  profile: PlatformProfile;
+  token?: string;
+  profile?: PlatformProfile;
+  emailVerificationRequired?: boolean;
+  emailMasked?: string;
+  challengeToken?: string;
 }
 
 export interface PlatformClinic {
@@ -77,6 +80,13 @@ export function loginPlatform(email: string, password: string) {
   return request<PlatformLoginResponse>("/platform/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
+  });
+}
+
+export function verifyPlatformEmail(challengeToken: string, emailCode: string) {
+  return request<{ token: string; profile: PlatformProfile }>("/platform/verify-email", {
+    method: "POST",
+    body: JSON.stringify({ challengeToken, emailCode }),
   });
 }
 

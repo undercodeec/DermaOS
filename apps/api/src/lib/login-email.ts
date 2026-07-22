@@ -197,3 +197,21 @@ export async function sendPasswordResetEmailCode(to: string, code: string) {
   ].join("");
   await sendEmailCode(to, subject, text, html, "auth/password-reset", code);
 }
+
+export async function sendPlatformLoginEmailCode(to: string, code: string) {
+  const subject = "Codigo de acceso de superadmin DERMA-OS";
+  const text = [
+    "Tu codigo de segundo factor para la plataforma DERMA-OS es:", code, "",
+    `Caduca en ${env.AUTH_EMAIL_CODE_TTL_MINUTES} minutos y solo puede usarse una vez.`,
+    "Si no intentaste ingresar como superadmin, cambia la contrasena y revisa los accesos.",
+  ].join("\r\n");
+  const html = [
+    "<div style=\"font-family:Arial,sans-serif;line-height:1.5;color:#111827\">",
+    "<p>Tu codigo de segundo factor para la plataforma <strong>DERMA-OS</strong> es:</p>",
+    `<p style=\"font-size:28px;font-weight:700;letter-spacing:6px;margin:16px 0\">${code}</p>`,
+    `<p>Caduca en ${env.AUTH_EMAIL_CODE_TTL_MINUTES} minutos y solo puede usarse una vez.</p>`,
+    "<p>Si no intentaste ingresar como superadmin, cambia la contrasena y revisa los accesos.</p>",
+    "</div>",
+  ].join("");
+  await sendEmailCode(to, subject, text, html, "platform/email-code", code);
+}

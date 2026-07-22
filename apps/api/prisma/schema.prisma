@@ -132,6 +132,11 @@ model Clinic {
   subscription     ClinicSubscription?
   subscriptionPayments PlatformSubscriptionPayment[]
   reportNotes      ReportNote[]
+  clinicalRecords  ClinicalRecord[]
+  photos            Photo[]
+  consents          Consent[]
+  consentEvents     ConsentEvent[]
+  procedures        Procedure[]
 
   @@map("clinics")
 }
@@ -286,10 +291,12 @@ model Appointment {
 
 model ClinicalRecord {
   id              String             @id @default(uuid()) @db.Uuid
+  clinicId        String             @map("clinic_id") @db.Uuid
+  clinic          Clinic             @relation(fields: [clinicId], references: [id])
   patientId       String             @map("patient_id") @db.Uuid
-  patient         Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient         Patient            @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade, map: "clinical_records_patient_same_clinic_fkey")
   professionalId  String             @map("professional_id") @db.Uuid
-  professional    Professional       @relation(fields: [professionalId], references: [id])
+  professional    Professional       @relation(fields: [professionalId, clinicId], references: [id, clinicId], map: "clinical_records_professional_same_clinic_fkey")
   type            ClinicalRecordType
   date            DateTime           @default(now()) @db.Timestamptz
   subjective      String?
@@ -299,14 +306,17 @@ model ClinicalRecord {
   cie10Codes      String[]           @map("cie10_codes")
   prescription    Json?
 
+  @@index([clinicId])
   @@index([patientId, date])
   @@map("clinical_records")
 }
 
 model Photo {
   id          String    @id @default(uuid()) @db.Uuid
+  clinicId    String    @map("clinic_id") @db.Uuid
+  clinic      Clinic    @relation(fields: [clinicId], references: [id])
   patientId   String    @map("patient_id") @db.Uuid
-  patient     Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient     Patient   @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade, map: "photos_patient_same_clinic_fkey")
   takenAt     DateTime  @default(now()) @map("taken_at") @db.Timestamptz
   bodyArea    String    @map("body_area")
   lesionTag   String    @map("lesion_tag")
@@ -316,6 +326,7 @@ model Photo {
   createdById String?   @map("created_by") @db.Uuid
   createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
+  @@index([clinicId])
   @@index([patientId, takenAt])
   @@index([lesionTag])
   @@map("photos")
@@ -344,16 +355,19 @@ model ConsentTemplate {
   consents Consent[]
 
   @@index([clinicId])
+  @@unique([id, clinicId], map: "consent_templates_id_clinic_id_key")
   @@unique([clinicId, seriesId, version])
   @@map("consent_templates")
 }
 
 model Consent {
   id             String          @id @default(uuid()) @db.Uuid
+  clinicId       String          @map("clinic_id") @db.Uuid
+  clinic         Clinic          @relation(fields: [clinicId], references: [id])
   patientId      String          @map("patient_id") @db.Uuid
-  patient        Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient        Patient         @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade, map: "consents_patient_same_clinic_fkey")
   templateId     String          @map("template_id") @db.Uuid
-  template       ConsentTemplate @relation(fields: [templateId], references: [id])
+  template       ConsentTemplate @relation(fields: [templateId, clinicId], references: [id, clinicId], map: "consents_template_same_clinic_fkey")
   status         ConsentStatus   @default(pendiente)
   signedAt       DateTime?       @map("signed_at") @db.Timestamptz
   signaturePath  String?         @map("signature_path")
@@ -382,14 +396,18 @@ model Consent {
 
   events ConsentEvent[]
 
+  @@index([clinicId])
   @@index([patientId])
+  @@unique([id, clinicId], map: "consents_id_clinic_id_key")
   @@map("consents")
 }
 
 model ConsentEvent {
   id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clinicId      String           @map("clinic_id") @db.Uuid
+  clinic        Clinic           @relation(fields: [clinicId], references: [id])
   consentId     String           @map("consent_id") @db.Uuid
-  consent       Consent          @relation(fields: [consentId], references: [id], onDelete: Restrict)
+  consent       Consent          @relation(fields: [consentId, clinicId], references: [id, clinicId], onDelete: Restrict, map: "consent_events_consent_same_clinic_fkey")
   kind          ConsentEventKind
   body          String           @db.Text
   createdById   String?          @map("created_by_id") @db.Uuid
@@ -401,6 +419,7 @@ model ConsentEvent {
   chainSequence Int              @map("chain_sequence")
   hash          String
 
+  @@index([clinicId])
   @@index([consentId, at])
   @@unique([consentId, chainSequence])
   @@map("consent_events")
@@ -408,12 +427,14 @@ model ConsentEvent {
 
 model Procedure {
   id             String       @id @default(uuid()) @db.Uuid
+  clinicId       String       @map("clinic_id") @db.Uuid
+  clinic         Clinic       @relation(fields: [clinicId], references: [id])
   patientId      String       @map("patient_id") @db.Uuid
-  patient        Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient        Patient      @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade, map: "procedures_patient_same_clinic_fkey")
   serviceId      String       @map("service_id") @db.Uuid
-  service        Service      @relation(fields: [serviceId], references: [id])
+  service        Service      @relation(fields: [serviceId, clinicId], references: [id, clinicId], map: "procedures_service_same_clinic_fkey")
   professionalId String       @map("professional_id") @db.Uuid
-  professional   Professional @relation(fields: [professionalId], references: [id])
+  professional   Professional @relation(fields: [professionalId, clinicId], references: [id, clinicId], map: "procedures_professional_same_clinic_fkey")
   date           DateTime     @default(now()) @db.Timestamptz
   productUsed    String?      @map("product_used")
   units          Int?
@@ -424,6 +445,7 @@ model Procedure {
   photoIds       String[]     @default([]) @map("photo_ids") @db.Uuid
   notes          String?
 
+  @@index([clinicId])
   @@index([patientId, date])
   @@map("procedures")
 }

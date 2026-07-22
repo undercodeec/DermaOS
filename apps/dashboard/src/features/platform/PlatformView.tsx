@@ -12,6 +12,7 @@ import {
   setPlatformToken,
   startTrial,
   updateClinicAccess,
+  verifyPlatformEmail,
   type PlatformClinic,
 } from "./api";
 
@@ -44,6 +45,9 @@ export function PlatformView() {
   const [token, setToken] = useState(getPlatformToken());
   const [email, setEmail] = useState("gerencia@undercodeec.com");
   const [password, setPassword] = useState("");
+  const [challengeToken, setChallengeToken] = useState("");
+  const [emailMasked, setEmailMasked] = useState("");
+  const [emailCode, setEmailCode] = useState("");
   const [amount, setAmount] = useState(49);
   const [selected, setSelected] = useState<PlatformClinic | null>(null);
   const [link, setLink] = useState("");
@@ -58,9 +62,27 @@ export function PlatformView() {
   const loginMut = useMutation({
     mutationFn: () => loginPlatform(email.trim(), password),
     onSuccess: (r) => {
+      setPassword("");
+      if (r.emailVerificationRequired && r.challengeToken) {
+        setChallengeToken(r.challengeToken);
+        setEmailMasked(r.emailMasked ?? email.trim());
+        setEmailCode("");
+        return;
+      }
+      if (r.token) {
+        setPlatformToken(r.token);
+        setToken(r.token);
+        qc.invalidateQueries({ queryKey: ["platform-clinics"] });
+      }
+    },
+  });
+  const verifyMut = useMutation({
+    mutationFn: () => verifyPlatformEmail(challengeToken, emailCode),
+    onSuccess: (r) => {
       setPlatformToken(r.token);
       setToken(r.token);
-      setPassword("");
+      setChallengeToken("");
+      setEmailCode("");
       qc.invalidateQueries({ queryKey: ["platform-clinics"] });
     },
   });
@@ -114,9 +136,32 @@ export function PlatformView() {
           <div className="card card-pad" style={{ maxWidth: 520 }}>
             <h2 style={{ marginTop: 0 }}>Ingreso superadmin</h2>
             <p className="muted">
-              Acceso exclusivo para gerencia de plataforma. La verificacion por email queda temporalmente desactivada para pruebas locales.
+              Acceso exclusivo para gerencia de plataforma con segundo factor obligatorio por correo.
             </p>
-            <Field label="Correo">
+            {challengeToken ? (
+              <>
+                <p className="muted">Ingresa el codigo de 6 digitos enviado a {emailMasked}.</p>
+                <Field label="Codigo de verificacion">
+                  <input
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={emailCode}
+                    onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && emailCode.length === 6) verifyMut.mutate();
+                    }}
+                  />
+                </Field>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Btn onClick={() => { setChallengeToken(""); setEmailCode(""); }}>Volver</Btn>
+                  <Btn kind="primary" icon="check" disabled={emailCode.length !== 6 || verifyMut.isPending} onClick={() => verifyMut.mutate()}>
+                    {verifyMut.isPending ? "Verificando..." : "Verificar e ingresar"}
+                  </Btn>
+                </div>
+                {verifyMut.isError ? <p style={{ color: "var(--err)", fontSize: 13 }}>{(verifyMut.error as Error).message}</p> : null}
+              </>
+            ) : <><Field label="Correo">
               <input
                 type="email"
                 value={email}
@@ -148,6 +193,7 @@ export function PlatformView() {
             {loginMut.isError ? (
               <p style={{ color: "var(--err)", fontSize: 13 }}>{(loginMut.error as Error).message}</p>
             ) : null}
+            </>}
           </div>
         ) : error ? (
           <div className="warn-box">{(error as Error).message}</div>

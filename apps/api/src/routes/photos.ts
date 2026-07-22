@@ -67,6 +67,7 @@ router.post(
 
       const photo = await prisma.photo.create({
         data: {
+          clinicId: req.user!.clinicId,
           patientId: meta.patient_id,
           bodyArea: meta.body_area,
           lesionTag: meta.lesion_tag,

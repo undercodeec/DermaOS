@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { badRequest, notFound } from "./errors.js";
+import { acquireTransactionLock } from "./db-locks.js";
 
 function cents(value: Prisma.Decimal | number | string) {
   return Math.round(Number(value) * 100);
@@ -11,9 +12,7 @@ export async function assertPackagePaymentFits(
   amount: Prisma.Decimal | number | string,
   options: { includePendingLinks?: boolean } = {},
 ) {
-  await tx.$queryRaw(
-    Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`package-balance:${balanceId}`}))`,
-  );
+  await acquireTransactionLock(tx, `package-balance:${balanceId}`);
 
   const balance = await tx.packageBalance.findUnique({
     where: { id: balanceId },

@@ -7,6 +7,13 @@ import { requireAuth, requireModule, requireRole } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
 import { calcInvoiceTotals, invoiceNumber, sriAccessKey } from "../lib/sri.js";
+import { requireClinicModuleAccess } from "../lib/entitlements.js";
+import {
+  clinicalFileDateRange,
+  clinicalFileQuerySchema,
+  clinicalFileRequiredModules,
+} from "../lib/clinical-file.js";
+import { acquireTransactionLock } from "../lib/db-locks.js";
 
 const router = Router();
 router.use(requireAuth, requireModule("pacientes"));
@@ -127,6 +134,117 @@ router.get("/:id/counts", async (req, res, next) => {
   }
 });
 
+router.get("/:id/clinical-file", requireRole("admin", "profesional"), async (req, res, next) => {
+  try {
+    const query = clinicalFileQuerySchema.parse(req.query);
+    await Promise.all(
+      clinicalFileRequiredModules(query).map((moduleId) =>
+        requireClinicModuleAccess(req.user!.clinicId, moduleId),
+      ),
+    );
+
+    const patient = await prisma.patient.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+      include: { clinic: { select: { name: true, ruc: true, logoData: true } } },
+    });
+    if (!patient) throw notFound("Paciente no encontrado");
+
+    const signerId = query.signerProfessionalId
+      ?? (req.user!.role === "profesional" ? req.user!.professionalId ?? undefined : undefined);
+    if (signerId) assertProfessionalAuthorship(req, signerId);
+    const signer = signerId
+      ? await prisma.professional.findFirst({
+          where: { id: signerId, clinicId: req.user!.clinicId },
+          select: { id: true, name: true, specialty: true, registrationNo: true },
+        })
+      : null;
+    if (signerId && !signer) throw badRequest("Profesional firmante no valido para esta clinica");
+
+    const range = clinicalFileDateRange(query);
+    const dateFilter = Object.keys(range).length ? range : undefined;
+    const recordTypes: Array<"evolucion" | "receta"> = [];
+    if (query.includeEvolutions) recordTypes.push("evolucion");
+    if (query.includePrescriptions) recordTypes.push("receta");
+
+    const [records, procedures, consents, photos] = await Promise.all([
+      recordTypes.length
+        ? prisma.clinicalRecord.findMany({
+            where: { patientId: patient.id, type: { in: recordTypes }, ...(dateFilter ? { date: dateFilter } : {}) },
+            include: { professional: { select: { id: true, name: true, specialty: true, registrationNo: true } } },
+            orderBy: { date: "desc" },
+          })
+        : Promise.resolve([]),
+      query.includeProcedures
+        ? prisma.procedure.findMany({
+            where: { patientId: patient.id, ...(dateFilter ? { date: dateFilter } : {}) },
+            include: {
+              service: { select: { id: true, name: true } },
+              professional: { select: { id: true, name: true, specialty: true, registrationNo: true } },
+            },
+            orderBy: { date: "desc" },
+          })
+        : Promise.resolve([]),
+      query.includeConsents
+        ? prisma.consent.findMany({
+            where: {
+              patientId: patient.id,
+              ...(dateFilter ? { OR: [{ signedAt: dateFilter }, { revokedAt: dateFilter }] } : {}),
+            },
+            select: {
+              id: true,
+              status: true,
+              signedAt: true,
+              revokedAt: true,
+              revocationReason: true,
+              templateTitle: true,
+              templateKind: true,
+              templateVersion: true,
+              signedByUserName: true,
+            },
+            orderBy: { signedAt: "desc" },
+          })
+        : Promise.resolve([]),
+      query.includePhotos
+        ? prisma.photo.findMany({
+            where: { patientId: patient.id, ...(dateFilter ? { takenAt: dateFilter } : {}) },
+            select: { id: true, takenAt: true, bodyArea: true, lesionTag: true, caption: true, kind: true },
+            orderBy: { takenAt: "asc" },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    await audit(
+      req,
+      query.purpose === "print" ? "Imprimio ficha clinica" : "Genero ficha clinica",
+      "historia",
+      `${patient.firstName} ${patient.lastName}`,
+    );
+
+    res.json({
+      generatedAt: new Date().toISOString(),
+      purpose: query.purpose,
+      period: { from: query.from ?? null, to: query.to ?? null },
+      included: {
+        evolutions: query.includeEvolutions,
+        prescriptions: query.includePrescriptions,
+        procedures: query.includeProcedures,
+        consents: query.includeConsents,
+        photos: query.includePhotos,
+      },
+      clinic: patient.clinic,
+      patient: serializePatient(patient),
+      signer,
+      evolutions: records.filter((record) => record.type === "evolucion"),
+      prescriptions: records.filter((record) => record.type === "receta"),
+      procedures,
+      consents,
+      photos: photos.map((photo) => ({ ...photo, fileUrl: `/photos/${photo.id}/file` })),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.post("/", requireModule("pacientes", "write"), async (req, res, next) => {
   try {
     const body = newPatientSchema.parse(req.body);
@@ -190,6 +308,7 @@ router.post("/:id/evolucion", requireModule("historia", "write"), async (req, re
     assertProfessionalAuthorship(req, body.professionalId);
     const r = await prisma.clinicalRecord.create({
       data: {
+        clinicId: req.user!.clinicId,
         patientId: pat.id,
         professionalId: body.professionalId,
         type: "evolucion",
@@ -290,6 +409,7 @@ router.post("/:id/recetas", requireModule("historia", "write"), async (req, res,
     assertProfessionalAuthorship(req, body.professionalId);
     const r = await prisma.clinicalRecord.create({
       data: {
+        clinicId: req.user!.clinicId,
         patientId: pat.id,
         professionalId: body.professionalId,
         type: "receta",
@@ -435,6 +555,7 @@ router.post(
     if (!tpl.allowedRoles.includes(req.user!.role)) throw badRequest("Su rol no está autorizado para generar esta plantilla");
     const c = await prisma.consent.create({
       data: {
+        clinicId: req.user!.clinicId,
         patientId: pat.id,
         templateId: tpl.id,
         status: "pendiente",
@@ -497,6 +618,7 @@ router.post("/:id/procedures", requireModule("procedimientos", "write"), async (
     assertProfessionalAuthorship(req, body.professionalId);
     const pr = await prisma.procedure.create({
       data: {
+        clinicId: req.user!.clinicId,
         patientId: pat.id,
         serviceId: body.serviceId,
         professionalId: body.professionalId,
@@ -557,9 +679,7 @@ router.post("/:id/balances", requireModule("paquetes", "write"), async (req, res
       throw badRequest("El abono inicial no puede superar el precio del paquete");
     }
     const bal = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw(
-        Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`package:${pk.id}`}))`,
-      );
+      await acquireTransactionLock(tx, `package:${pk.id}`);
       const currentPackage = await tx.package.findFirst({
         where: { id: pk.id, clinicId: req.user!.clinicId, active: true },
       });

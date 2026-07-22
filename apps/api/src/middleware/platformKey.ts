@@ -10,6 +10,17 @@ interface PlatformTokenPayload {
   scope: "platform";
 }
 
+interface PlatformMfaPayload {
+  sub: "platform-mfa";
+  email: string;
+  scope: "platform-mfa";
+  codeHash: string;
+  jti: string;
+  exp?: number;
+}
+
+const consumedChallenges = new Map<string, number>();
+
 function sameSecret(a: string, b: string) {
   const left = Buffer.from(a);
   const right = Buffer.from(b);
@@ -29,6 +40,50 @@ export function verifyPlatformCredentials(email: string, password: string) {
   const expectedPassword = env.PLATFORM_ADMIN_PASSWORD ?? "";
   if (!expectedPassword) return false;
   return email.trim().toLowerCase() === expectedEmail && sameSecret(password, expectedPassword);
+}
+
+function platformCodeHash(email: string, code: string, jti: string) {
+  return crypto.createHash("sha256").update(
+    `${env.PLATFORM_JWT_SECRET ?? env.JWT_SECRET}:platform-mfa:${email.toLowerCase()}:${jti}:${code}`,
+  ).digest("hex");
+}
+
+export function signPlatformMfaChallenge(email: string, code: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const jti = crypto.randomUUID();
+  return jwt.sign(
+    {
+      sub: "platform-mfa",
+      email: normalizedEmail,
+      scope: "platform-mfa",
+      codeHash: platformCodeHash(normalizedEmail, code, jti),
+      jti,
+    } satisfies PlatformMfaPayload,
+    env.PLATFORM_JWT_SECRET ?? env.JWT_SECRET,
+    { expiresIn: `${env.AUTH_EMAIL_CODE_TTL_MINUTES}m` } as jwt.SignOptions,
+  );
+}
+
+export function verifyPlatformMfaChallenge(challengeToken: string, code: string) {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    for (const [jti, expiresAt] of consumedChallenges) {
+      if (expiresAt <= now) consumedChallenges.delete(jti);
+    }
+    const payload = jwt.verify(
+      challengeToken,
+      env.PLATFORM_JWT_SECRET ?? env.JWT_SECRET,
+    ) as PlatformMfaPayload;
+    if (payload.sub !== "platform-mfa" || payload.scope !== "platform-mfa" || !payload.jti || !payload.codeHash) return null;
+    if (payload.email !== env.PLATFORM_ADMIN_EMAIL.trim().toLowerCase()) return null;
+    if (consumedChallenges.has(payload.jti)) return null;
+    const expected = platformCodeHash(payload.email, code, payload.jti);
+    if (!sameSecret(expected, payload.codeHash)) return null;
+    consumedChallenges.set(payload.jti, payload.exp ?? now + env.AUTH_EMAIL_CODE_TTL_MINUTES * 60);
+    return payload.email;
+  } catch {
+    return null;
+  }
 }
 
 export const requirePlatformAuth: RequestHandler = (req, _res, next) => {

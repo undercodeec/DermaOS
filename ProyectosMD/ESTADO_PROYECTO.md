@@ -1,5 +1,67 @@
 # 📋 ESTADO DEL PROYECTO — DERMA-OS
-> Ultima actualizacion: 2026-07-21 (flujo acumulado, correcciones validadas y punto de reanudacion en VPS)
+> Ultima actualizacion: 2026-07-22 (ficha clinica, smoke tests HTTP/BD, barrera multi-tenant indirecta y MFA de plataforma)
+
+---
+
+## Continuacion de desarrollo (2026-07-22)
+
+### Ficha clinica consolidada e imprimible
+
+- Se implemento `GET /patients/:id/clinical-file` con respuesta JSON consolidada de paciente, antecedentes, evoluciones SOAP, recetas, procedimientos, consentimientos y metadatos/ficheros protegidos de fotos.
+- Solo los roles `admin` y `profesional` pueden generar la ficha. El endpoint conserva el aislamiento por `clinicId`, comprueba los modulos de la suscripcion segun las secciones solicitadas y restringe el profesional firmante.
+- Se agregaron filtros `from`/`to`, inclusiones por seccion, fotos excluidas por defecto y proposito `preview`/`print`.
+- Generar la vista previa e imprimir/exportar registran eventos de auditoria distintos.
+- El dashboard incorpora el boton `Ficha clinica`, filtros, selector de firmante para administradores, vista previa HTML, carga autenticada de fotos y CSS A4 para `window.print()`/Guardar como PDF.
+- No se persiste una copia historica del PDF en esta fase; se genera temporalmente desde la vista imprimible.
+
+### Smoke tests HTTP/BD permanentes
+
+- La configuracion Express se separo en `src/app.ts`; `server.ts` solo abre el puerto. Esto permite probar la API real sobre un puerto efimero sin iniciar el proceso productivo.
+- Se agrego `apps/api/src/integration/http-db.integration.ts` y los scripts `test:integration` en API y raiz.
+- La suite crea dos clinicas y los cinco roles sobre una base que debe llamarse `test`, `smoke` o `integration`; nunca limpia ni acepta silenciosamente una base productiva.
+- Casos cubiertos: headers HTTP, MFA de superadmin, ficha clinica por rol, IDOR entre clinicas, barreras SQL indirectas, citas solapadas concurrentes, abonos concurrentes, webhook Payphone idempotente, firma/PDF/revocacion/inmutabilidad de consentimientos y fotos privadas con JWT.
+
+### Hallazgo de runtime corregido: advisory locks
+
+- La primera ejecucion HTTP/BD descubrio que Prisma 5.22 no puede deserializar el tipo PostgreSQL `void` retornado directamente por `pg_advisory_xact_lock`.
+- El defecto producia HTTP 500 en auditoria, agenda, abonos y webhooks aunque los tests unitarios pasaran.
+- Se centralizo el bloqueo en `lib/db-locks.ts`, que adquiere el advisory lock y devuelve un entero compatible con Prisma.
+- Se reemplazaron los ocho usos en auditoria, agenda, paquetes, consentimientos y suscripciones. La concurrencia real paso despues de la correccion.
+
+### Barrera multi-tenant indirecta
+
+- Nueva migracion `20260722000000_indirect_tenant_integrity`.
+- Agrega `clinic_id` obligatorio a `clinical_records`, `photos`, `consents`, `consent_events` y `procedures`, con backfill desde pacientes/consentimientos.
+- La migracion se aborta si encuentra cruces historicos de paciente, profesional, servicio, plantilla, autor, consentimiento o foto.
+- Se agregaron claves foraneas compuestas y triggers para responsables de fotos/eventos/consentimientos y adjuntos de procedimientos.
+- La barrera fue probada intentando cruces directos en cada tabla; PostgreSQL rechazo todos.
+
+### MFA del superadmin
+
+- `/platform/login` valida email y password, envia un codigo de 6 digitos y devuelve un challenge JWT de corta duracion, pero no un token de plataforma.
+- `/platform/verify-email` emite la sesion solo tras validar el codigo; el challenge queda consumido y no puede reutilizarse.
+- El dashboard `/platform` incorpora el segundo paso de codigo por email.
+- En desarrollo/test el codigo se registra en consola; en produccion usa el SMTP obligatorio de la API.
+
+### Validacion ejecutada acumulada
+
+- Prisma: schema valido; 15/15 migraciones aplicadas desde una base PostgreSQL 16 vacia; `migrate diff` sin deriva.
+- API: typecheck y build OK; 20/20 pruebas unitarias OK.
+- HTTP/BD: 9 escenarios integrados OK (10 tests reportados incluyendo el contenedor de suite).
+- Dashboard: typecheck, lint y build OK; 969 modulos transformados.
+- Bundle principal actual: 447.98 kB minificado / 126.67 kB gzip; el pendiente historico que indicaba ~933 kB ya no reproduce.
+- `git diff --check`: OK; solo avisos esperados de conversion LF/CRLF.
+- PostgreSQL se ejecuto en un contenedor Docker temporal con datos exclusivamente sinteticos; el contenedor fue eliminado y no se toco ninguna base real.
+
+### Punto exacto de reanudacion
+
+1. Verificar visualmente en navegador la vista previa de ficha clinica, fotos autenticadas, MFA `/platform` y salida A4 con datos representativos largos.
+2. Configurar SMTP real en VPS y probar entrega de registro, login clinico, recuperacion y MFA de superadmin.
+3. Respaldar la base VPS y aplicar las 15 migraciones con `prisma migrate deploy`; la nueva barrera abortara ante cruces historicos.
+4. Ejecutar la suite integrada contra una copia aislada del entorno y luego los smoke tests posteriores al despliegue.
+5. Validar Payphone con credenciales/notificaciones externas reales y decidir el diseño PDF definitivo/historico.
+
+El desarrollo del 2026-07-22 descrito arriba fue revisado y preparado para publicacion en `main` y `origin/main`. `AGENTS.md` sigue sin seguimiento y no forma parte del desarrollo funcional.
 
 ---
 
@@ -25,23 +87,23 @@
 ### Estado tecnico comprobado
 
 - Rama actual: `main`.
-- Ultimo commit compartido: `a238755 feat(auth): agregar recuperacion de contrasena` (`origin/main`).
-- Las correcciones del 2026-07-21 estan en el arbol de trabajo local: **todavia no tienen commit, push ni despliegue**.
+- El desarrollo acumulado hasta el 2026-07-22 queda publicado en `origin/main`; el historial Git conserva el identificador exacto del commit.
+- La publicacion del codigo no implica despliegue: las migraciones y variables nuevas siguen pendientes de aplicar y validar en la VPS.
 - Prisma validate/generate: OK.
-- Migraciones sobre PostgreSQL 16 vacio: 14/14 aplicadas y sin deriva respecto de `schema.prisma`.
-- Barrera multi-tenant: una cita con paciente de otra clinica fue rechazada por PostgreSQL.
-- API: typecheck, build y 14/14 pruebas OK.
-- Dashboard: lint, typecheck y build OK; 973 modulos transformados.
+- Migraciones sobre PostgreSQL 16 vacio: 15/15 aplicadas y sin deriva respecto de `schema.prisma`.
+- Barrera multi-tenant: relaciones directas e indirectas cruzadas fueron rechazadas por PostgreSQL.
+- API: typecheck, build, 20/20 pruebas unitarias y suite HTTP/BD integrada OK.
+- Dashboard: lint, typecheck y build OK; 969 modulos transformados.
 - Dependencias de produccion: `pnpm audit --prod` sin vulnerabilidades conocidas.
 - El contenedor PostgreSQL y el runtime Node portatil usados para validar fueron retirados; no se modifico ninguna base real.
 
 ### Punto exacto para continuar en la proxima sesion
 
-1. Revisar el diff local y separar cualquier archivo ajeno antes del commit; `AGENTS.md` aparece sin seguimiento y no forma parte de las correcciones descritas.
+1. Verificar visualmente la ficha clinica, la impresion A4 y el MFA de plataforma con datos representativos.
 2. Hacer backup de cualquier base que vaya a recibir las migraciones.
 3. Aplicar `prisma migrate deploy`; la barrera multi-tenant se detendra deliberadamente si detecta relaciones historicas entre clinicas distintas.
-4. Ejecutar smoke tests HTTP con dos clinicas, permisos por rol, concurrencia de agenda/abonos/webhooks, firma y descarga de consentimientos y acceso protegido a fotos.
-5. Corregir cualquier hallazgo, repetir build/lint/pruebas y solo entonces crear commit y push con autorizacion explicita.
+4. Repetir la suite HTTP/BD ya automatizada contra una copia aislada del entorno destino y ejecutar smoke tests posteriores al despliegue.
+5. Corregir cualquier hallazgo del entorno destino y repetir build, lint y pruebas antes de promover una nueva version.
 6. Continuar el despliegue VPS desde el paso 4 descrito al final de este documento.
 
 No usar en una base con datos reales `prisma db push`, `db:reset`, `db:clean` ni `db:seed`.
@@ -139,7 +201,7 @@ copy apps\api\.env.local apps\api\.env
 2. En la VPS: obtener el commit aprobado, instalar con lockfile, regenerar Prisma, aplicar migraciones y construir.
 3. Reiniciar `derma-api`, recargar Nginx y ejecutar las pruebas posteriores al despliegue.
 
-Un push ya no debe considerarse despliegue completo: la VPS requiere actualización y reinicio controlados. No hacer push hasta revisar los cambios locales actuales.
+Un push no debe considerarse despliegue completo: la VPS requiere actualización, migraciones y reinicio controlados.
 
 ---
 
@@ -375,7 +437,7 @@ La aplicacion compila y las pruebas unitarias existentes pasan, pero no debe con
 1. Agregar pruebas HTTP/BD automatizadas con dos clínicas, concurrencia real de webhooks/abonos/agenda y autorización por rol; en esta sesión se validaron migraciones y una barrera multi-tenant directamente en PostgreSQL, pero la suite permanente sigue siendo principalmente unitaria.
 2. Extender la segunda barrera multi-tenant a relaciones indirectas sin `clinic_id` (`clinical_records`, `procedures`, `photos`, `consents` y eventos) mediante columnas de clínica o triggers validados.
 3. Decidir producto de MFA: el flujo activo y documentado es segundo factor por email. El TOTP histórico de junio no está conectado a las rutas/UI actuales y no debe anunciarse como disponible hasta reimplementarlo y probarlo.
-4. Dividir el bundle del dashboard; el build es correcto, pero el chunk principal minificado sigue alrededor de 933 kB.
+4. Vigilar el tamaño del bundle del dashboard; el build final del 2026-07-22 produce un chunk principal de 447.98 kB minificado (126.67 kB gzip), por lo que el valor histórico de ~933 kB ya no reproduce.
 
 ### Siguientes pasos de desarrollo - Fichas clinicas imprimibles en PDF
 
@@ -393,19 +455,19 @@ Flujo propuesto:
    - Fotos clinicas seleccionadas si aplica.
    - Firma o datos del profesional responsable.
 
-2. **Crear endpoint backend de ficha clinica**
+2. **Crear endpoint backend de ficha clinica — implementado 2026-07-22**
    - Ruta sugerida: `GET /patients/:id/clinical-file`.
    - Debe validar que el paciente pertenece a `req.user.clinicId`.
    - Debe consolidar informacion desde `patients`, `clinical_records`, `procedures`, `consents`, `photos` y `professionals`.
    - Debe devolver JSON estructurado primero, antes de generar PDF, para facilitar pruebas y UI.
 
-3. **Crear vista previa en dashboard**
+3. **Crear vista previa en dashboard — implementado 2026-07-22**
    - Agregar accion en ficha del paciente: `Ficha clinica`.
    - Mostrar preview HTML con secciones ordenadas.
    - Permitir filtros: rango de fechas, incluir/excluir recetas, fotos, procedimientos o consentimientos.
    - Permitir seleccionar profesional firmante si aplica.
 
-4. **Generacion de PDF**
+4. **Generacion de PDF — primera opcion implementada 2026-07-22**
    - Primera opcion pragmatica: renderizar HTML imprimible y usar `window.print()` o CSS `@media print`.
    - Segunda etapa: generar PDF desde backend para descarga consistente.
    - Evaluar motor: HTML -> PDF con Playwright/Puppeteer en backend, o generacion directa con libreria PDF.
@@ -434,22 +496,22 @@ Flujo propuesto:
 ### Pendientes
 | Item | Prioridad |
 |------|-----------|
-| Revisar diff, excluir archivos ajenos y crear el primer commit de las correcciones del 2026-07-21 | Alta — todo sigue local, sin push ni despliegue |
-| Respaldar la base destino y aplicar las 14 migraciones con `prisma migrate deploy` en VPS | Alta — incluye sesiones, consentimientos y barrera multi-tenant; no usar `db push/reset/seed` |
+| Probar visualmente la ficha clínica, impresión A4 y MFA de plataforma | Alta — pruebas API/BD automatizadas pasan; falta navegador con datos representativos |
+| Respaldar la base destino y aplicar las 15 migraciones con `prisma migrate deploy` en VPS | Alta — incluye sesiones, consentimientos y ambas barreras multi-tenant; no usar `db push/reset/seed` |
 | Probar migraciones, triggers, descarga/revocacion y acceso con la cuenta real de la API | Alta — la validacion en PostgreSQL temporal fue correcta, falta evidencia en el entorno destino |
 | Configurar y validar SMTP en VPS | Alta — registro, segundo factor por email y recuperacion dependen del proveedor real en `NODE_ENV=production` |
-| Agregar MFA al login del superadmin `/platform/login` | Alta - tiene password, JWT separado y rate limit, pero aun no segundo factor |
+| Validar MFA de `/platform` con SMTP real en VPS | Alta — flujo de challenge/codigo ya implementado; falta entrega real del correo |
 | Solicitar a Payphone activación de Notificación Externa para el webhook `/payments/payphone/NotificacionPago` | Alta — requerida para conciliación automática real |
 | Validación operativa con credenciales Payphone reales por clínica antes del piloto | Alta — comprobar links, reserva de saldo, webhook idempotente y conciliacion manual |
 | Evaluar Token de terceros / comercio aliado Payphone cuando el SaaS tenga varias clínicas | Media — reduce fricción de onboarding |
 | Configurar `PLATFORM_PAYPHONE_TOKEN` y `PLATFORM_PAYPHONE_STORE_ID` en VPS | Alta — requerido para links de suscripción DERMA-OS |
 | Solicitar a Payphone Notificación Externa para `/platform/payphone/NotificacionPago` | Alta — requerido para extender suscripciones automáticamente |
 | Validar dashboard interno `/platform` con `PLATFORM_REGISTER_KEY` antes de ventas piloto | Alta — controla demos y accesos |
-| Automatizar pruebas HTTP/BD con dos clinicas y concurrencia de agenda, abonos y webhooks | Alta — las pruebas actuales pasan, pero siguen siendo principalmente unitarias |
-| Extender barreras multi-tenant a relaciones indirectas sin `clinic_id` | Media — pendiente para historia, procedimientos, fotos, consentimientos y eventos |
+| Incorporar `test:integration` a CI con PostgreSQL efimero | Media — suite local implementada y validada; falta automatizacion del runner CI |
+| Validar la barrera multi-tenant indirecta al desplegar | Alta — migracion y pruebas locales completas; falta copia/backup del entorno destino |
 | Definir si el segundo factor clinico seguira por email o si se reimplementara TOTP | Media — TOTP pertenece al flujo historico y no esta conectado a la UI/rutas actuales |
 | Definir flujo usuario/profesional | Media - hoy son entidades separadas; opcionalmente agregar "crear profesional asociado" al crear usuario clinico |
-| Dividir el bundle principal del dashboard | Media — build correcto, chunk principal aproximado de 933 kB |
+| Vigilar y dividir el bundle principal del dashboard si vuelve a crecer | Baja — build actual: 447.98 kB minificado / 126.67 kB gzip |
 | Sitio comercial `apps/site` | Baja — diseño antes que código |
 | Firma `.p12` + webservice SRI real | Baja — fuera de alcance demo |
 
@@ -948,7 +1010,7 @@ Esta seccion se conserva como referencia del despliegue Render/Netlify anterior;
 - ✅ Paso 2: actualización del servidor, usuario de despliegue, firewall y herramientas base.
 - ✅ Paso 3: instalación/configuración inicial de Node, pnpm y PostgreSQL.
 - ✅ Código local auditado: Prisma, migraciones temporales, API, dashboard, lint y dependencias validados el 2026-07-21.
-- ⚠️ Las correcciones auditadas siguen sin commit/push y todavía no se aplicaron en la VPS ni en una base real.
+- Las correcciones auditadas están publicadas en `origin/main`, pero todavía no se aplicaron en la VPS ni en una base real.
 - ⏳ Paso 4 en adelante: pendiente.
 
 ### Pasos pendientes para continuar

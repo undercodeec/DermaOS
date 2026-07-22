@@ -5,6 +5,7 @@ import { prisma } from "../db.js";
 import { requireAuth, requireModule } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
 import { badRequest, forbidden, notFound } from "../lib/errors.js";
+import { acquireTransactionLock } from "../lib/db-locks.js";
 
 const router = Router();
 router.use(requireAuth, requireModule("agenda"));
@@ -62,9 +63,7 @@ async function ensureNoProfessionalOverlap(
   tx: Prisma.TransactionClient,
   input: { clinicId: string; professionalId: string; startAt: Date; endAt: Date; excludeId?: string },
 ) {
-  await tx.$queryRaw(
-    Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`appointment:${input.professionalId}`}))`,
-  );
+  await acquireTransactionLock(tx, `appointment:${input.professionalId}`);
   const overlap = await tx.appointment.findFirst({
     where: {
       clinicId: input.clinicId,

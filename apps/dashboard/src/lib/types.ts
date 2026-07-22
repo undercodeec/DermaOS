@@ -275,6 +275,61 @@ export interface Professional {
   color: string;
 }
 
+export interface ClinicalFileOptions {
+  from?: string;
+  to?: string;
+  includeEvolutions: boolean;
+  includePrescriptions: boolean;
+  includeProcedures: boolean;
+  includeConsents: boolean;
+  includePhotos: boolean;
+  signerProfessionalId?: string;
+  purpose?: "preview" | "print";
+}
+
+export interface ClinicalFileConsent {
+  id: string;
+  status: ConsentStatus;
+  signedAt: string | null;
+  revokedAt: string | null;
+  revocationReason: string | null;
+  templateTitle: string | null;
+  templateKind: ConsentKind | null;
+  templateVersion: number | null;
+  signedByUserName: string | null;
+}
+
+export interface ClinicalFilePhoto {
+  id: string;
+  takenAt: string;
+  bodyArea: string;
+  lesionTag: string;
+  caption: string;
+  kind: PhotoKind;
+  fileUrl: string;
+}
+
+export interface ClinicalFile {
+  generatedAt: string;
+  purpose: "preview" | "print";
+  period: { from: string | null; to: string | null };
+  included: {
+    evolutions: boolean;
+    prescriptions: boolean;
+    procedures: boolean;
+    consents: boolean;
+    photos: boolean;
+  };
+  clinic: { name: string; ruc: string | null; logoData: string | null };
+  patient: Patient;
+  signer: Pick<Professional, "id" | "name" | "specialty" | "registrationNo"> | null;
+  evolutions: ClinicalRecord[];
+  prescriptions: ClinicalRecord[];
+  procedures: Procedure[];
+  consents: ClinicalFileConsent[];
+  photos: ClinicalFilePhoto[];
+}
+
 export interface Package {
   id: string;
   serviceId: string;
