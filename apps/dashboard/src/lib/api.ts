@@ -34,7 +34,10 @@ async function request<T>(
     } catch {
       /* body no json */
     }
-    if (res.status === 401) clearToken();
+    if (res.status === 401) {
+      clearToken();
+      window.dispatchEvent(new Event("derma:unauthorized"));
+    }
     throw new ApiError(res.status, msg);
   }
   if (opts.raw) return res as unknown as T;

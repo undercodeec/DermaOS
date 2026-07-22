@@ -8,7 +8,7 @@ import { env } from "../env.js";
 import { requireAuth, requireModule } from "../middleware/auth.js";
 import { rateLimit } from "../middleware/rateLimit.js";
 import { audit } from "../lib/audit.js";
-import { badRequest, forbidden, notFound } from "../lib/errors.js";
+import { badRequest, notFound } from "../lib/errors.js";
 import { readPhoto, removePhoto, storePhoto } from "../lib/photo-storage.js";
 
 const router = Router();
@@ -35,6 +35,17 @@ const metaSchema = z.object({
   caption: z.string().min(1),
   kind: z.enum(["basal", "control"]).default("basal"),
 });
+
+const publicPhotoSelect = {
+  id: true,
+  patientId: true,
+  takenAt: true,
+  bodyArea: true,
+  lesionTag: true,
+  caption: true,
+  kind: true,
+  createdById: true,
+} as const;
 
 router.post(
   "/",
@@ -76,6 +87,7 @@ router.post(
           storagePath,
           createdById: req.user!.id,
         },
+        select: publicPhotoSelect,
       });
       photoPersisted = true;
       await audit(req, "Subió fotografía clínica", "fotos", `${meta.lesion_tag}`);
@@ -90,12 +102,10 @@ router.post(
 // Sirve el binario protegido por JWT
 router.get("/:id/file", requireModule("fotos"), async (req, res, next) => {
   try {
-    const p = await prisma.photo.findUnique({
-      where: { id: req.params.id },
-      include: { patient: { select: { clinicId: true } } },
+    const p = await prisma.photo.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
     });
     if (!p) throw notFound("Foto no existe");
-    if (p.patient.clinicId !== req.user!.clinicId) throw forbidden();
     const image = await readPhoto(p.storagePath).catch(() => null);
     if (!image) throw notFound();
     await audit(req, "Visualizó fotografía clínica", "fotos", p.lesionTag);
@@ -108,14 +118,54 @@ router.get("/:id/file", requireModule("fotos"), async (req, res, next) => {
   }
 });
 
+router.put(
+  "/:id/file",
+  requireModule("fotos", "write"),
+  photoUploadLimit,
+  upload.single("file"),
+  async (req, res, next) => {
+    let replacementPath: string | null = null;
+    let replacementPersisted = false;
+    try {
+      if (req.user!.role !== "admin") throw notFound();
+      if (!req.file) throw badRequest("Falta archivo");
+      const photo = await prisma.photo.findFirst({
+        where: { id: req.params.id, clinicId: req.user!.clinicId },
+      });
+      if (!photo) throw notFound("Foto no existe");
+      const imageType = detectImageType(req.file.buffer);
+      if (!imageType) throw badRequest("El archivo no es una imagen JPEG, PNG o WebP valida");
+
+      const filename = `${Date.now()}_${crypto.randomBytes(8).toString("hex")}.${imageType.ext}`;
+      replacementPath = await storePhoto({
+        clinicId: req.user!.clinicId,
+        patientId: photo.patientId,
+        filename,
+        buffer: req.file.buffer,
+        contentType: imageType.mime,
+      });
+      const updated = await prisma.photo.update({
+        where: { id: photo.id },
+        data: { storagePath: replacementPath },
+        select: publicPhotoSelect,
+      });
+      replacementPersisted = true;
+      await removePhoto(photo.storagePath).catch(() => {});
+      await audit(req, "Reemplazo fotografia clinica", "fotos", photo.lesionTag);
+      res.json(updated);
+    } catch (e) {
+      if (replacementPath && !replacementPersisted) await removePhoto(replacementPath).catch(() => {});
+      next(e);
+    }
+  },
+);
+
 router.delete("/:id", requireModule("fotos", "write"), async (req, res, next) => {
   try {
-    const p = await prisma.photo.findUnique({
-      where: { id: req.params.id },
-      include: { patient: { select: { clinicId: true } } },
+    const p = await prisma.photo.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
     });
     if (!p) throw notFound();
-    if (p.patient.clinicId !== req.user!.clinicId) throw forbidden();
     if (req.user!.role !== "admin") return next(notFound());
     await prisma.photo.delete({ where: { id: p.id } });
     await removePhoto(p.storagePath).catch(() => {});

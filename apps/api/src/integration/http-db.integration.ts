@@ -276,6 +276,31 @@ test("HTTP/BD: aislamiento, roles y concurrencia", { skip: !integrationDatabaseU
       assert.equal(crossTenant.status, 404);
     });
 
+    await t.test("lecturas de pacientes y usuarios nunca cruzan clinicas", async () => {
+      for (const path of [
+        `/patients/${patientTwo.id}`,
+        `/patients/${patientTwo.id}/counts`,
+        `/patients/${patientTwo.id}/evolucion`,
+        `/patients/${patientTwo.id}/recetas`,
+        `/patients/${patientTwo.id}/photos`,
+        `/patients/${patientTwo.id}/consents`,
+        `/patients/${patientTwo.id}/procedures`,
+        `/patients/${patientTwo.id}/balances`,
+      ]) {
+        assert.equal((await request(path, {}, tokens.admin)).status, 404, path);
+      }
+
+      const clinicOneUsersResponse = await request("/admin/users", {}, tokens.admin);
+      assert.equal(clinicOneUsersResponse.status, 200);
+      const clinicOneUsers = await clinicOneUsersResponse.json() as Array<{ id: string }>;
+      assert.deepEqual(new Set(clinicOneUsers.map((user) => user.id)), new Set(users.map((user) => user.id)));
+
+      const clinicTwoUsersResponse = await request("/admin/users", {}, tokenFor(adminTwo));
+      assert.equal(clinicTwoUsersResponse.status, 200);
+      const clinicTwoUsers = await clinicTwoUsersResponse.json() as Array<{ id: string }>;
+      assert.deepEqual(clinicTwoUsers.map((user) => user.id), [adminTwo.id]);
+    });
+
     await t.test("barrera SQL rechaza relaciones indirectas entre clinicas", async () => {
       await assert.rejects(prisma.clinicalRecord.create({
         data: {
@@ -418,7 +443,7 @@ test("HTTP/BD: aislamiento, roles y concurrencia", { skip: !integrationDatabaseU
       assert.equal(pdf.status, 200);
       assert.equal(pdf.headers.get("content-type"), "application/pdf");
       assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0, 4).toString("ascii"), "%PDF");
-      assert.equal((await request(`/consents/${consent.id}/pdf`, {}, tokenFor(adminTwo))).status, 403);
+      assert.equal((await request(`/consents/${consent.id}/pdf`, {}, tokenFor(adminTwo))).status, 404);
       await assert.rejects(
         prisma.consent.update({ where: { id: consent.id }, data: { templateBody: "Alteracion no permitida" } }),
       );
@@ -443,14 +468,43 @@ test("HTTP/BD: aislamiento, roles y concurrencia", { skip: !integrationDatabaseU
       form.append("file", new Blob([image], { type: "image/png" }), "integration.png");
       const uploaded = await request("/photos", { method: "POST", body: form }, tokens.admin);
       assert.equal(uploaded.status, 201);
-      const photo = await uploaded.json() as { id: string };
+      const photo = await uploaded.json() as { id: string; storagePath?: string };
+      assert.equal(photo.storagePath, undefined);
+
+      const ownList = await request(`/patients/${patientOne.id}/photos`, {}, tokens.admin);
+      assert.equal(ownList.status, 200);
+      const ownPhotos = await ownList.json() as Array<{ id: string; storagePath?: string }>;
+      assert.equal(ownPhotos.some((item) => item.id === photo.id), true);
+      assert.equal(ownPhotos.find((item) => item.id === photo.id)?.storagePath, undefined);
+      assert.equal((await request(`/patients/${patientTwo.id}/photos`, {}, tokens.admin)).status, 404);
 
       const ownFile = await request(`/photos/${photo.id}/file`, {}, tokens.admin);
       assert.equal(ownFile.status, 200);
       assert.equal(ownFile.headers.get("cache-control"), "private, no-store");
       assert.deepEqual(Buffer.from(await ownFile.arrayBuffer()), image);
       assert.equal((await request(`/photos/${photo.id}/file`)).status, 401);
-      assert.equal((await request(`/photos/${photo.id}/file`, {}, tokenFor(adminTwo))).status, 403);
+      assert.equal((await request(`/photos/${photo.id}/file`, {}, tokenFor(adminTwo))).status, 404);
+
+      const replacementImage = createTestPng(64, 64);
+      const replacementForm = new FormData();
+      replacementForm.append("file", new Blob([replacementImage], { type: "image/png" }), "replacement.png");
+      const replacement = await request(`/photos/${photo.id}/file`, {
+        method: "PUT",
+        body: replacementForm,
+      }, tokens.admin);
+      assert.equal(replacement.status, 200);
+      const replacementBody = await replacement.json() as { storagePath?: string };
+      assert.equal(replacementBody.storagePath, undefined);
+      const replacedFile = await request(`/photos/${photo.id}/file`, {}, tokens.admin);
+      assert.deepEqual(Buffer.from(await replacedFile.arrayBuffer()), replacementImage);
+
+      const foreignReplacement = new FormData();
+      foreignReplacement.append("file", new Blob([image], { type: "image/png" }), "foreign.png");
+      assert.equal((await request(`/photos/${photo.id}/file`, {
+        method: "PUT",
+        body: foreignReplacement,
+      }, tokenFor(adminTwo))).status, 404);
+      assert.equal((await request(`/photos/${photo.id}`, { method: "DELETE" }, tokenFor(adminTwo))).status, 404);
 
       const clinicalFile = await request(
         `/patients/${patientOne.id}/clinical-file?includeEvolutions=0&includePrescriptions=0&includeProcedures=0&includeConsents=0&includePhotos=1`,

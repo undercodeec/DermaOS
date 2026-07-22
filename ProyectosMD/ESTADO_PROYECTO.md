@@ -1,9 +1,20 @@
 # 📋 ESTADO DEL PROYECTO — DERMA-OS
-> Ultima actualizacion: 2026-07-22 (ficha clinica, smoke tests HTTP/BD, barrera multi-tenant indirecta y MFA de plataforma)
+> Ultima actualizacion: 2026-07-22 (correccion postdespliegue de aislamiento entre clinicas y gestion de fotos)
 
 ---
 
 ## Continuacion de desarrollo (2026-07-22)
+
+### Correccion postdespliegue: aislamiento entre clinicas y gestion de fotos
+
+- La revision manual en VPS detecto que, al cerrar sesion e ingresar con otra clinica en el mismo navegador, React Query conservaba usuarios/roles y fotografias de la sesion anterior. El backend de usuarios ya filtraba por `clinicId`; la representacion cruzada provenia de la cache del dashboard.
+- El dashboard ahora limpia toda la cache al iniciar sesion, registrar/verificar una cuenta, cerrar sesion, fallar `/auth/me` o recibir cualquier HTTP 401. De este modo ningun dato renderizado sobrevive a un cambio o expiracion de sesion.
+- Todas las lecturas y modificaciones de subrecursos del paciente agregaron filtros explicitos por `clinicId`, ademas de la barrera comun `router.param("id")` que ya rechazaba pacientes ajenos.
+- Fotos y consentimientos buscan directamente por `id + clinicId` y responden 404 ante identificadores de otra clinica, sin confirmar que el recurso existe.
+- Los administradores ahora tienen acciones visibles `Reemplazar` y `Eliminar` en cada fotografia. El reemplazo valida JPEG/PNG/WebP, guarda primero el archivo nuevo, actualiza la referencia y retira el anterior; ambas operaciones conservan permisos y auditoria.
+- Las respuestas de carga/listado/reemplazo de fotos ya no exponen `storagePath` al navegador.
+- La suite HTTP/BD crea dos clinicas y comprueba pacientes, conteos, historia, recetas, fotos, consentimientos, procedimientos, paquetes y usuarios. Tambien valida reemplazo/eliminacion y rechazo cruzado de binarios.
+- Estado de esta correccion: cambios locales pendientes de commit, push y despliegue; no requiere una migracion Prisma adicional.
 
 ### Ficha clinica consolidada e imprimible
 
@@ -47,18 +58,18 @@
 
 - Prisma: schema valido; 15/15 migraciones aplicadas desde una base PostgreSQL 16 vacia; `migrate diff` sin deriva.
 - API: typecheck y build OK; 20/20 pruebas unitarias OK.
-- HTTP/BD: 9 escenarios integrados OK (10 tests reportados incluyendo el contenedor de suite).
+- HTTP/BD: 10 escenarios integrados OK (11 tests reportados incluyendo el contenedor de suite).
 - Dashboard: typecheck, lint y build OK; 969 modulos transformados.
-- Bundle principal actual: 447.98 kB minificado / 126.67 kB gzip; el pendiente historico que indicaba ~933 kB ya no reproduce.
+- Bundle principal actual: 449.69 kB minificado / 127.17 kB gzip; el pendiente historico que indicaba ~933 kB ya no reproduce.
 - `git diff --check`: OK; solo avisos esperados de conversion LF/CRLF.
 - PostgreSQL se ejecuto en un contenedor Docker temporal con datos exclusivamente sinteticos; el contenedor fue eliminado y no se toco ninguna base real.
 
 ### Punto exacto de reanudacion
 
-1. Verificar visualmente en navegador la vista previa de ficha clinica, fotos autenticadas, MFA `/platform` y salida A4 con datos representativos largos.
-2. Configurar SMTP real en VPS y probar entrega de registro, login clinico, recuperacion y MFA de superadmin.
-3. Respaldar la base VPS y aplicar las 15 migraciones con `prisma migrate deploy`; la nueva barrera abortara ante cruces historicos.
-4. Ejecutar la suite integrada contra una copia aislada del entorno y luego los smoke tests posteriores al despliegue.
+1. Revisar, crear commit y publicar la correccion postdespliegue de aislamiento/fotos; `AGENTS.md` permanece fuera del desarrollo funcional.
+2. En VPS hacer `git pull --ff-only`, reconstruir API/dashboard y reiniciar `derma-api`; no hay una migracion nueva para esta correccion.
+3. Repetir en ventana privada el cambio entre dos clinicas, usuarios/roles, fotos, reemplazo y eliminacion.
+4. Configurar SMTP real en VPS y probar entrega de registro, login clinico, recuperacion y MFA de superadmin.
 5. Validar Payphone con credenciales/notificaciones externas reales y decidir el diseño PDF definitivo/historico.
 
 El desarrollo del 2026-07-22 descrito arriba fue publicado en `main` y `origin/main` mediante el commit `8280dc1 feat: consolidar ficha clinica y seguridad multi-tenant`. `AGENTS.md` sigue sin seguimiento y no forma parte del desarrollo funcional.
@@ -496,8 +507,8 @@ Flujo propuesto:
 ### Pendientes
 | Item | Prioridad |
 |------|-----------|
-| Probar visualmente la ficha clínica, impresión A4 y MFA de plataforma | Alta — pruebas API/BD automatizadas pasan; falta navegador con datos representativos |
-| Respaldar la base destino y aplicar las 15 migraciones con `prisma migrate deploy` en VPS | Alta — incluye sesiones, consentimientos y ambas barreras multi-tenant; no usar `db push/reset/seed` |
+| Publicar y desplegar la corrección de caché multi-clínica y gestión de fotos | Alta — corrección local validada; falta commit/push, build y reinicio en VPS |
+| Confirmar `prisma migrate status` en VPS | Alta — las 15 migraciones previas deben figurar aplicadas; esta corrección no agrega migración |
 | Probar migraciones, triggers, descarga/revocacion y acceso con la cuenta real de la API | Alta — la validacion en PostgreSQL temporal fue correcta, falta evidencia en el entorno destino |
 | Configurar y validar SMTP en VPS | Alta — registro, segundo factor por email y recuperacion dependen del proveedor real en `NODE_ENV=production` |
 | Validar MFA de `/platform` con SMTP real en VPS | Alta — flujo de challenge/codigo ya implementado; falta entrega real del correo |
@@ -511,7 +522,7 @@ Flujo propuesto:
 | Validar la barrera multi-tenant indirecta al desplegar | Alta — migracion y pruebas locales completas; falta copia/backup del entorno destino |
 | Definir si el segundo factor clinico seguira por email o si se reimplementara TOTP | Media — TOTP pertenece al flujo historico y no esta conectado a la UI/rutas actuales |
 | Definir flujo usuario/profesional | Media - hoy son entidades separadas; opcionalmente agregar "crear profesional asociado" al crear usuario clinico |
-| Vigilar y dividir el bundle principal del dashboard si vuelve a crecer | Baja — build actual: 447.98 kB minificado / 126.67 kB gzip |
+| Vigilar y dividir el bundle principal del dashboard si vuelve a crecer | Baja — build actual: 449.69 kB minificado / 127.17 kB gzip |
 | Sitio comercial `apps/site` | Baja — diseño antes que código |
 | Firma `.p12` + webservice SRI real | Baja — fuera de alcance demo |
 

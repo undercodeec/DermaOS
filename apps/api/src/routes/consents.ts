@@ -6,7 +6,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireAuth, requireModule, requireRole } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
-import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
+import { badRequest, conflict, notFound } from "../lib/errors.js";
 import {
   buildConsentPdf,
   consentContentHash,
@@ -132,13 +132,12 @@ router.post(
   requireRole("admin", "recepcion", "profesional", "esteticista"),
   async (req, res, next) => {
   try {
-    const c = await prisma.consent.findUnique({
-      where: { id: req.params.id },
+    const c = await prisma.consent.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
       include: { template: true, patient: { include: { clinic: true } } },
     });
     if (!c) throw notFound("Consentimiento no encontrado");
     // Verifica que el consentimiento pertenece a un paciente de esta clínica
-    if (c.patient.clinicId !== req.user!.clinicId) throw forbidden();
     if (c.status !== "pendiente") throw conflict("Este consentimiento ya no está pendiente de firma");
     const body = signSchema.parse(req.body);
     if (!isValidPngSignatureDataUrl(body.signaturePath)) {
@@ -245,12 +244,11 @@ router.post(
   async (req, res, next) => {
     try {
       const input = eventSchema.parse(req.body);
-      const consent = await prisma.consent.findUnique({
-        where: { id: req.params.id },
+      const consent = await prisma.consent.findFirst({
+        where: { id: req.params.id, clinicId: req.user!.clinicId },
         include: { patient: { select: { clinicId: true } }, events: { orderBy: { at: "desc" }, take: 1 } },
       });
       if (!consent) throw notFound("Consentimiento no encontrado");
-      if (consent.patient.clinicId !== req.user!.clinicId) throw forbidden();
       if (!consent.signedAt || (consent.status !== "firmado" && consent.status !== "revocado")) {
         throw conflict("Solo se pueden agregar eventos a documentos firmados");
       }
@@ -314,15 +312,14 @@ router.post(
 
 router.get("/:id/pdf", requireModule("consentimientos"), async (req, res, next) => {
   try {
-    const consent = await prisma.consent.findUnique({
-      where: { id: req.params.id },
+    const consent = await prisma.consent.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
       include: {
         template: true,
         patient: { include: { clinic: { select: { name: true, ruc: true, logoData: true } } } },
       },
     });
     if (!consent) throw notFound("Consentimiento no encontrado");
-    if (consent.patient.clinicId !== req.user!.clinicId) throw forbidden();
     if (!consent.signedAt || (consent.status !== "firmado" && consent.status !== "revocado")) {
       throw conflict("El PDF legal solo está disponible después de firmar el consentimiento");
     }

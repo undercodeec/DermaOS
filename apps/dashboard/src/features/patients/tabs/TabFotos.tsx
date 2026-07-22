@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Icon } from "@/components/icons";
 import { Btn, EmptyState } from "@/components/Primitives";
@@ -8,6 +8,7 @@ import { roleCanWrite } from "@/lib/permissions";
 import type { Photo } from "@/lib/types";
 import type { TabProps } from "./TabProps";
 import { UploadPhotoModal } from "../modals/UploadPhotoModal";
+import { deletePhoto, replacePhoto } from "../api";
 
 function usePhotoUrl(photoId: string | null) {
   const { data } = useQuery({
@@ -74,9 +75,26 @@ function PairOrSingle({ basal, control }: { basal: Photo; control: Photo | null 
   return <img src={before} alt={basal.caption} style={{ width: "100%", borderRadius: 9 }} />;
 }
 
-function Thumb({ photo, thumbsOnly }: { photo: Photo; thumbsOnly: boolean }) {
+function Thumb({
+  photo,
+  thumbsOnly,
+  canManage,
+  deleting,
+  replacing,
+  onDelete,
+  onReplace,
+}: {
+  photo: Photo;
+  thumbsOnly: boolean;
+  canManage: boolean;
+  deleting: boolean;
+  replacing: boolean;
+  onDelete: () => void;
+  onReplace: (file: File) => void;
+}) {
   const url = usePhotoUrl(photo.id);
   const [open, setOpen] = useState(false);
+  const replaceRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!open) return;
     const fn = (e: KeyboardEvent) => {
@@ -86,7 +104,7 @@ function Thumb({ photo, thumbsOnly }: { photo: Photo; thumbsOnly: boolean }) {
     return () => window.removeEventListener("keydown", fn);
   }, [open]);
   return (
-    <>
+    <div style={{ display: "grid", gap: 6 }}>
       <button
         className={`foto-thumb${thumbsOnly ? " thumb-locked" : ""}`}
         onClick={() => !thumbsOnly && setOpen(true)}
@@ -98,6 +116,38 @@ function Thumb({ photo, thumbsOnly }: { photo: Photo; thumbsOnly: boolean }) {
         </span>
         <span className="foto-thumb-date tnum">{fmtDate(photo.takenAt)}</span>
       </button>
+      {canManage ? (
+        <div style={{ display: "flex", gap: 6 }}>
+          <input
+            ref={replaceRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            style={{ display: "none" }}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) onReplace(file);
+            }}
+          />
+          <Btn
+            sm
+            icon="camera"
+            disabled={deleting || replacing}
+            onClick={() => replaceRef.current?.click()}
+          >
+            {replacing ? "Reemplazandoâ€¦" : "Reemplazar"}
+          </Btn>
+          <Btn
+            sm
+            kind="ghost"
+            icon="trash"
+            disabled={deleting || replacing}
+            onClick={onDelete}
+          >
+            {deleting ? "Eliminandoâ€¦" : "Eliminar"}
+          </Btn>
+        </div>
+      ) : null}
       {open && url ? (
         <div className="overlay" onClick={() => setOpen(false)}>
           <div className="modal wide" onClick={(e) => e.stopPropagation()}>
@@ -116,18 +166,38 @@ function Thumb({ photo, thumbsOnly }: { photo: Photo; thumbsOnly: boolean }) {
           </div>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }
 
 export function TabFotos({ patient, role }: TabProps) {
+  const queryClient = useQueryClient();
   const [openUpload, setOpenUpload] = useState(false);
   const thumbsOnly = role === "recepcion";
   const canUpload = roleCanWrite(role, "fotos");
+  const canManage = role === "admin";
 
   const { data: all = [], isLoading } = useQuery({
     queryKey: ["photos", patient.id],
     queryFn: () => api.get<Photo[]>(`/patients/${patient.id}/photos`),
+  });
+
+  const refreshPhotoQueries = (photoId: string) => {
+    queryClient.removeQueries({ queryKey: ["photo-blob", photoId] });
+    queryClient.invalidateQueries({ queryKey: ["photos", patient.id] });
+    queryClient.invalidateQueries({ queryKey: ["patient-counts", patient.id] });
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: (photo: Photo) => deletePhoto(photo.id),
+    onSuccess: (_result, photo) => refreshPhotoQueries(photo.id),
+    onError: (error: Error) => window.alert(error.message),
+  });
+
+  const replaceMutation = useMutation({
+    mutationFn: ({ photo, file }: { photo: Photo; file: File }) => replacePhoto(photo.id, file),
+    onSuccess: (_result, variables) => refreshPhotoQueries(variables.photo.id),
+    onError: (error: Error) => window.alert(error.message),
   });
 
   const groups = useMemo(() => {
@@ -205,7 +275,20 @@ export function TabFotos({ patient, role }: TabProps) {
               ) : null}
               <div className="foto-strip" style={{ marginTop: 12 }}>
                 {items.map((x) => (
-                  <Thumb key={x.id} photo={x} thumbsOnly={thumbsOnly} />
+                  <Thumb
+                    key={x.id}
+                    photo={x}
+                    thumbsOnly={thumbsOnly}
+                    canManage={canManage}
+                    deleting={deleteMutation.isPending && deleteMutation.variables?.id === x.id}
+                    replacing={replaceMutation.isPending && replaceMutation.variables?.photo.id === x.id}
+                    onDelete={() => {
+                      if (window.confirm(`Â¿Eliminar definitivamente la foto "${x.caption}"?`)) {
+                        deleteMutation.mutate(x);
+                      }
+                    }}
+                    onReplace={(file) => replaceMutation.mutate({ photo: x, file })}
+                  />
                 ))}
               </div>
             </div>

@@ -142,7 +142,6 @@ export interface Photo {
   lesionTag: string;
   caption: string;
   kind: PhotoKind;
-  storagePath: string;
   createdById: string | null;
 }
 

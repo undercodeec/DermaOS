@@ -108,7 +108,9 @@ router.get("/", async (req, res, next) => {
 
 router.get("/:id", async (req, res, next) => {
   try {
-    const p = await prisma.patient.findUnique({ where: { id: req.params.id } });
+    const p = await prisma.patient.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!p) throw notFound("Paciente no encontrado");
     res.json(serializePatient(p));
   } catch (e) {
@@ -119,14 +121,15 @@ router.get("/:id", async (req, res, next) => {
 router.get("/:id/counts", async (req, res, next) => {
   try {
     const id = req.params.id;
+    const clinicId = req.user!.clinicId;
     const [evolucion, recetas, fotos, consentimientos, procedimientos, paquetes, facturas] = await Promise.all([
-      prisma.clinicalRecord.count({ where: { patientId: id, type: "evolucion" } }),
-      prisma.clinicalRecord.count({ where: { patientId: id, type: "receta" } }),
-      prisma.photo.count({ where: { patientId: id } }),
-      prisma.consent.count({ where: { patientId: id } }),
-      prisma.procedure.count({ where: { patientId: id } }),
-      prisma.packageBalance.count({ where: { patientId: id } }),
-      prisma.invoice.count({ where: { patientId: id } }),
+      prisma.clinicalRecord.count({ where: { patientId: id, clinicId, type: "evolucion" } }),
+      prisma.clinicalRecord.count({ where: { patientId: id, clinicId, type: "receta" } }),
+      prisma.photo.count({ where: { patientId: id, clinicId } }),
+      prisma.consent.count({ where: { patientId: id, clinicId } }),
+      prisma.procedure.count({ where: { patientId: id, clinicId } }),
+      prisma.packageBalance.count({ where: { patientId: id, clinicId } }),
+      prisma.invoice.count({ where: { patientId: id, clinicId } }),
     ]);
     res.json({ evolucion, recetas, fotos, consentimientos, procedimientos, paquetes, facturas });
   } catch (e) {
@@ -169,14 +172,14 @@ router.get("/:id/clinical-file", requireRole("admin", "profesional"), async (req
     const [records, procedures, consents, photos] = await Promise.all([
       recordTypes.length
         ? prisma.clinicalRecord.findMany({
-            where: { patientId: patient.id, type: { in: recordTypes }, ...(dateFilter ? { date: dateFilter } : {}) },
+            where: { patientId: patient.id, clinicId: req.user!.clinicId, type: { in: recordTypes }, ...(dateFilter ? { date: dateFilter } : {}) },
             include: { professional: { select: { id: true, name: true, specialty: true, registrationNo: true } } },
             orderBy: { date: "desc" },
           })
         : Promise.resolve([]),
       query.includeProcedures
         ? prisma.procedure.findMany({
-            where: { patientId: patient.id, ...(dateFilter ? { date: dateFilter } : {}) },
+            where: { patientId: patient.id, clinicId: req.user!.clinicId, ...(dateFilter ? { date: dateFilter } : {}) },
             include: {
               service: { select: { id: true, name: true } },
               professional: { select: { id: true, name: true, specialty: true, registrationNo: true } },
@@ -188,6 +191,7 @@ router.get("/:id/clinical-file", requireRole("admin", "profesional"), async (req
         ? prisma.consent.findMany({
             where: {
               patientId: patient.id,
+              clinicId: req.user!.clinicId,
               ...(dateFilter ? { OR: [{ signedAt: dateFilter }, { revokedAt: dateFilter }] } : {}),
             },
             select: {
@@ -206,7 +210,7 @@ router.get("/:id/clinical-file", requireRole("admin", "profesional"), async (req
         : Promise.resolve([]),
       query.includePhotos
         ? prisma.photo.findMany({
-            where: { patientId: patient.id, ...(dateFilter ? { takenAt: dateFilter } : {}) },
+            where: { patientId: patient.id, clinicId: req.user!.clinicId, ...(dateFilter ? { takenAt: dateFilter } : {}) },
             select: { id: true, takenAt: true, bodyArea: true, lesionTag: true, caption: true, kind: true },
             orderBy: { takenAt: "asc" },
           })
@@ -274,7 +278,7 @@ router.post("/", requireModule("pacientes", "write"), async (req, res, next) => 
 router.get("/:id/evolucion", requireModule("historia"), async (req, res, next) => {
   try {
     const list = await prisma.clinicalRecord.findMany({
-      where: { patientId: req.params.id, type: "evolucion" },
+      where: { patientId: req.params.id, clinicId: req.user!.clinicId, type: "evolucion" },
       include: { professional: { select: { id: true, name: true } } },
       orderBy: { date: "desc" },
     });
@@ -301,7 +305,9 @@ const newEvolucionSchema = z.object({
 });
 router.post("/:id/evolucion", requireModule("historia", "write"), async (req, res, next) => {
   try {
-    const pat = await prisma.patient.findUnique({ where: { id: req.params.id } });
+    const pat = await prisma.patient.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!pat) throw notFound("Paciente no encontrado");
     const body = newEvolucionSchema.parse(req.body);
     await ensureProfessionalForClinic(body.professionalId, req.user!.clinicId);
@@ -332,7 +338,9 @@ router.post("/:id/evolucion", requireModule("historia", "write"), async (req, re
 const updEvolucionSchema = newEvolucionSchema.partial();
 router.patch("/:id/evolucion/:rid", requireModule("historia", "write"), async (req, res, next) => {
   try {
-    const cur = await prisma.clinicalRecord.findUnique({ where: { id: req.params.rid } });
+    const cur = await prisma.clinicalRecord.findFirst({
+      where: { id: req.params.rid, patientId: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!cur || cur.patientId !== req.params.id || cur.type !== "evolucion") throw notFound("Evolución no encontrada");
     assertProfessionalAuthorship(req, cur.professionalId);
     const body = updEvolucionSchema.parse(req.body);
@@ -353,7 +361,9 @@ router.patch("/:id/evolucion/:rid", requireModule("historia", "write"), async (r
       },
       include: { professional: { select: { id: true, name: true } } },
     });
-    const pat = await prisma.patient.findUnique({ where: { id: cur.patientId } });
+    const pat = await prisma.patient.findFirst({
+      where: { id: cur.patientId, clinicId: req.user!.clinicId },
+    });
     await audit(req, "Editó evolución", "historia", pat ? `${pat.firstName} ${pat.lastName}` : "");
     res.json(r);
   } catch (e) {
@@ -363,11 +373,15 @@ router.patch("/:id/evolucion/:rid", requireModule("historia", "write"), async (r
 
 router.delete("/:id/evolucion/:rid", requireModule("historia", "write"), async (req, res, next) => {
   try {
-    const cur = await prisma.clinicalRecord.findUnique({ where: { id: req.params.rid } });
+    const cur = await prisma.clinicalRecord.findFirst({
+      where: { id: req.params.rid, patientId: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!cur || cur.patientId !== req.params.id || cur.type !== "evolucion") throw notFound("Evolución no encontrada");
     assertProfessionalAuthorship(req, cur.professionalId);
     await prisma.clinicalRecord.delete({ where: { id: cur.id } });
-    const pat = await prisma.patient.findUnique({ where: { id: cur.patientId } });
+    const pat = await prisma.patient.findFirst({
+      where: { id: cur.patientId, clinicId: req.user!.clinicId },
+    });
     await audit(req, "Eliminó evolución", "historia", pat ? `${pat.firstName} ${pat.lastName}` : "");
     res.status(204).end();
   } catch (e) {
@@ -379,7 +393,7 @@ router.delete("/:id/evolucion/:rid", requireModule("historia", "write"), async (
 router.get("/:id/recetas", requireModule("historia"), async (req, res, next) => {
   try {
     const list = await prisma.clinicalRecord.findMany({
-      where: { patientId: req.params.id, type: "receta" },
+      where: { patientId: req.params.id, clinicId: req.user!.clinicId, type: "receta" },
       include: { professional: { select: { id: true, name: true } } },
       orderBy: { date: "desc" },
     });
@@ -402,7 +416,9 @@ const newRecetaSchema = z.object({
 });
 router.post("/:id/recetas", requireModule("historia", "write"), async (req, res, next) => {
   try {
-    const pat = await prisma.patient.findUnique({ where: { id: req.params.id } });
+    const pat = await prisma.patient.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!pat) throw notFound("Paciente no encontrado");
     const body = newRecetaSchema.parse(req.body);
     await ensureProfessionalForClinic(body.professionalId, req.user!.clinicId);
@@ -431,7 +447,9 @@ const updRecetaSchema = z.object({
 });
 router.patch("/:id/recetas/:rid", requireModule("historia", "write"), async (req, res, next) => {
   try {
-    const cur = await prisma.clinicalRecord.findUnique({ where: { id: req.params.rid } });
+    const cur = await prisma.clinicalRecord.findFirst({
+      where: { id: req.params.rid, patientId: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!cur || cur.patientId !== req.params.id || cur.type !== "receta") throw notFound("Receta no encontrada");
     assertProfessionalAuthorship(req, cur.professionalId);
     const body = updRecetaSchema.parse(req.body);
@@ -448,7 +466,9 @@ router.patch("/:id/recetas/:rid", requireModule("historia", "write"), async (req
       },
       include: { professional: { select: { id: true, name: true } } },
     });
-    const pat = await prisma.patient.findUnique({ where: { id: cur.patientId } });
+    const pat = await prisma.patient.findFirst({
+      where: { id: cur.patientId, clinicId: req.user!.clinicId },
+    });
     await audit(req, "Editó receta", "historia", pat ? `${pat.firstName} ${pat.lastName}` : "");
     res.json(r);
   } catch (e) {
@@ -458,11 +478,15 @@ router.patch("/:id/recetas/:rid", requireModule("historia", "write"), async (req
 
 router.delete("/:id/recetas/:rid", requireModule("historia", "write"), async (req, res, next) => {
   try {
-    const cur = await prisma.clinicalRecord.findUnique({ where: { id: req.params.rid } });
+    const cur = await prisma.clinicalRecord.findFirst({
+      where: { id: req.params.rid, patientId: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!cur || cur.patientId !== req.params.id || cur.type !== "receta") throw notFound("Receta no encontrada");
     assertProfessionalAuthorship(req, cur.professionalId);
     await prisma.clinicalRecord.delete({ where: { id: cur.id } });
-    const pat = await prisma.patient.findUnique({ where: { id: cur.patientId } });
+    const pat = await prisma.patient.findFirst({
+      where: { id: cur.patientId, clinicId: req.user!.clinicId },
+    });
     await audit(req, "Eliminó receta", "historia", pat ? `${pat.firstName} ${pat.lastName}` : "");
     res.status(204).end();
   } catch (e) {
@@ -522,7 +546,10 @@ router.get("/:id/consents", requireModule("consentimientos"), async (req, res, n
   try {
     const patient = await prisma.patient.findFirst({ where: { id: req.params.id, clinicId: req.user!.clinicId } });
     if (!patient) throw notFound("Paciente no encontrado");
-    const where: Prisma.ConsentWhereInput = { patientId: req.params.id };
+    const where: Prisma.ConsentWhereInput = {
+      patientId: req.params.id,
+      clinicId: req.user!.clinicId,
+    };
     if (req.query.signed === "1") where.status = "firmado";
     const list = await prisma.consent.findMany({
       where,
@@ -584,7 +611,7 @@ router.post(
 router.get("/:id/procedures", requireModule("procedimientos"), async (req, res, next) => {
   try {
     const list = await prisma.procedure.findMany({
-      where: { patientId: req.params.id },
+      where: { patientId: req.params.id, clinicId: req.user!.clinicId },
       include: { service: { select: { name: true } }, professional: { select: { name: true } } },
       orderBy: { date: "desc" },
     });
@@ -607,10 +634,14 @@ const newProcedureSchema = z.object({
 });
 router.post("/:id/procedures", requireModule("procedimientos", "write"), async (req, res, next) => {
   try {
-    const pat = await prisma.patient.findUnique({ where: { id: req.params.id } });
+    const pat = await prisma.patient.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!pat) throw notFound("Paciente no encontrado");
     const body = newProcedureSchema.parse(req.body);
-    const consent = await prisma.consent.findUnique({ where: { id: body.consentId } });
+    const consent = await prisma.consent.findFirst({
+      where: { id: body.consentId, patientId: pat.id, clinicId: req.user!.clinicId },
+    });
     if (!consent || consent.patientId !== pat.id) throw badRequest("Consentimiento no pertenece al paciente");
     if (consent.status !== "firmado") throw conflict("El consentimiento no está firmado");
     await ensureServiceForClinic(body.serviceId, req.user!.clinicId);
@@ -644,7 +675,7 @@ router.post("/:id/procedures", requireModule("procedimientos", "write"), async (
 router.get("/:id/balances", requireModule("paquetes"), async (req, res, next) => {
   try {
     const list = await prisma.packageBalance.findMany({
-      where: { patientId: req.params.id },
+      where: { patientId: req.params.id, clinicId: req.user!.clinicId },
       include: { package: true, payments: { select: { amount: true } } },
       orderBy: { soldAt: "desc" },
     });
@@ -663,7 +694,9 @@ const sellPackageSchema = z.object({
 });
 router.post("/:id/balances", requireModule("paquetes", "write"), async (req, res, next) => {
   try {
-    const pat = await prisma.patient.findUnique({ where: { id: req.params.id } });
+    const pat = await prisma.patient.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!pat) throw notFound("Paciente no encontrado");
     const body = sellPackageSchema.parse(req.body);
     const pk = await prisma.package.findFirst({
@@ -752,7 +785,9 @@ const newInvoiceSchema = z.object({
 router.post("/:id/invoices", requireModule("facturacion", "write"), async (req, res, next) => {
   try {
     if (!env.INVOICES_ENABLED) throw notFound("Facturacion no habilitada");
-    const pat = await prisma.patient.findUnique({ where: { id: req.params.id } });
+    const pat = await prisma.patient.findFirst({
+      where: { id: req.params.id, clinicId: req.user!.clinicId },
+    });
     if (!pat) throw notFound("Paciente no encontrado");
     const body = newInvoiceSchema.parse(req.body);
 
@@ -814,7 +849,17 @@ router.post("/:id/invoices", requireModule("facturacion", "write"), async (req, 
 router.get("/:id/photos", requireModule("fotos"), async (req, res, next) => {
   try {
     const list = await prisma.photo.findMany({
-      where: { patientId: req.params.id },
+      where: { patientId: req.params.id, clinicId: req.user!.clinicId },
+      select: {
+        id: true,
+        patientId: true,
+        takenAt: true,
+        bodyArea: true,
+        lesionTag: true,
+        caption: true,
+        kind: true,
+        createdById: true,
+      },
       orderBy: { takenAt: "asc" },
     });
     res.json(list);

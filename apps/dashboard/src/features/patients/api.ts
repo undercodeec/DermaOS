@@ -196,3 +196,13 @@ export function createInvoice(patientId: string, input: NewInvoiceInput): Promis
 export function uploadPhoto(form: FormData): Promise<Photo> {
   return api.post<Photo>("/photos", form);
 }
+
+export function replacePhoto(photoId: string, file: File): Promise<Photo> {
+  const form = new FormData();
+  form.append("file", file);
+  return api.put<Photo>(`/photos/${photoId}/file`, form);
+}
+
+export function deletePhoto(photoId: string): Promise<{ ok: true }> {
+  return api.del<{ ok: true }>(`/photos/${photoId}`);
+}

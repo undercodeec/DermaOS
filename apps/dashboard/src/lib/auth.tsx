@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, getToken, setToken, clearToken, ApiError } from "./api";
 import type { Profile } from "./types";
 
@@ -51,6 +52,7 @@ interface AuthState {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -67,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         clearToken();
+        queryClient.clear();
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -74,7 +77,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [queryClient]);
+
+  useEffect(() => {
+    const clearSession = () => {
+      clearToken();
+      setProfile(null);
+      queryClient.clear();
+    };
+    window.addEventListener("derma:unauthorized", clearSession);
+    return () => window.removeEventListener("derma:unauthorized", clearSession);
+  }, [queryClient]);
 
   const signIn = async (email: string, password: string, emailCode?: string): Promise<LoginOutcome> => {
     try {
@@ -85,6 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, emailVerificationRequired: true, emailMasked: r.emailMasked };
       }
       if (r.token && r.profile) {
+        queryClient.clear();
         setToken(r.token);
         setProfile(r.profile);
         return { ok: true };
@@ -112,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
       const registered = await api.post<RegisterResponse>("/clinics/register", payload);
       if (registered.token && registered.profile) {
+        queryClient.clear();
         setToken(registered.token);
         setProfile(registered.profile);
         return { ok: true };
@@ -128,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const verifyRegistration = async (adminEmail: string, emailCode: string): Promise<LoginOutcome> => {
     try {
       const r = await api.post<VerifyRegistrationResponse>("/clinics/verify-email", { adminEmail, emailCode });
+      queryClient.clear();
       setToken(r.token);
       setProfile(r.profile);
       return { ok: true };
@@ -164,6 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     clearToken();
     setProfile(null);
+    queryClient.clear();
   };
 
   return (
