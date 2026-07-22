@@ -14,7 +14,7 @@
 - Los administradores ahora tienen acciones visibles `Reemplazar` y `Eliminar` en cada fotografia. El reemplazo valida JPEG/PNG/WebP, guarda primero el archivo nuevo, actualiza la referencia y retira el anterior; ambas operaciones conservan permisos y auditoria.
 - Las respuestas de carga/listado/reemplazo de fotos ya no exponen `storagePath` al navegador.
 - La suite HTTP/BD crea dos clinicas y comprueba pacientes, conteos, historia, recetas, fotos, consentimientos, procedimientos, paquetes y usuarios. Tambien valida reemplazo/eliminacion y rechazo cruzado de binarios.
-- Estado de esta correccion: cambios locales pendientes de commit, push y despliegue; no requiere una migracion Prisma adicional.
+- Estado de esta correccion: publicada en `main` mediante `a0779fc fix: aislar sesiones y gestionar fotos clinicas`; queda pendiente desplegarla y repetir la prueba manual en VPS. No requiere una migracion Prisma adicional.
 
 ### Ficha clinica consolidada e imprimible
 
@@ -66,13 +66,13 @@
 
 ### Punto exacto de reanudacion
 
-1. Revisar, crear commit y publicar la correccion postdespliegue de aislamiento/fotos; `AGENTS.md` permanece fuera del desarrollo funcional.
-2. En VPS hacer `git pull --ff-only`, reconstruir API/dashboard y reiniciar `derma-api`; no hay una migracion nueva para esta correccion.
+1. En VPS obtener `a0779fc` con `git pull --ff-only`, reconstruir API/dashboard y reiniciar `derma-api`; no hay una migracion nueva para esta correccion.
+2. Confirmar que API y dashboard sirven el commit publicado y que `/health` responde correctamente.
 3. Repetir en ventana privada el cambio entre dos clinicas, usuarios/roles, fotos, reemplazo y eliminacion.
 4. Configurar SMTP real en VPS y probar entrega de registro, login clinico, recuperacion y MFA de superadmin.
 5. Validar Payphone con credenciales/notificaciones externas reales y decidir el diseño PDF definitivo/historico.
 
-El desarrollo del 2026-07-22 descrito arriba fue publicado en `main` y `origin/main` mediante el commit `8280dc1 feat: consolidar ficha clinica y seguridad multi-tenant`. `AGENTS.md` sigue sin seguimiento y no forma parte del desarrollo funcional.
+El desarrollo base fue publicado mediante `8280dc1 feat: consolidar ficha clinica y seguridad multi-tenant`; la correccion posterior de aislamiento y fotos corresponde a `a0779fc fix: aislar sesiones y gestionar fotos clinicas`. `AGENTS.md` sigue sin seguimiento y no forma parte del desarrollo funcional.
 
 ---
 
@@ -98,7 +98,7 @@ El desarrollo del 2026-07-22 descrito arriba fue publicado en `main` y `origin/m
 ### Estado tecnico comprobado
 
 - Rama actual: `main`.
-- Commit funcional compartido: `8280dc1 feat: consolidar ficha clinica y seguridad multi-tenant` (`origin/main`).
+- Ultimo commit funcional: `a0779fc fix: aislar sesiones y gestionar fotos clinicas` (`main`; publicacion en `origin/main` realizada en esta sesion).
 - La publicacion del codigo no implica despliegue: las migraciones y variables nuevas siguen pendientes de aplicar y validar en la VPS.
 - Prisma validate/generate: OK.
 - Migraciones sobre PostgreSQL 16 vacio: 15/15 aplicadas y sin deriva respecto de `schema.prisma`.
@@ -507,7 +507,7 @@ Flujo propuesto:
 ### Pendientes
 | Item | Prioridad |
 |------|-----------|
-| Publicar y desplegar la corrección de caché multi-clínica y gestión de fotos | Alta — corrección local validada; falta commit/push, build y reinicio en VPS |
+| Desplegar la corrección de caché multi-clínica y gestión de fotos en VPS | Alta — commit funcional `a0779fc` publicado; faltan pull, build, reinicio y prueba manual |
 | Confirmar `prisma migrate status` en VPS | Alta — las 15 migraciones previas deben figurar aplicadas; esta corrección no agrega migración |
 | Probar migraciones, triggers, descarga/revocacion y acceso con la cuenta real de la API | Alta — la validacion en PostgreSQL temporal fue correcta, falta evidencia en el entorno destino |
 | Configurar y validar SMTP en VPS | Alta — registro, segundo factor por email y recuperacion dependen del proveedor real en `NODE_ENV=production` |
