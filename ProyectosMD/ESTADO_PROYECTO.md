@@ -61,7 +61,7 @@
 4. Ejecutar la suite integrada contra una copia aislada del entorno y luego los smoke tests posteriores al despliegue.
 5. Validar Payphone con credenciales/notificaciones externas reales y decidir el diseño PDF definitivo/historico.
 
-El desarrollo del 2026-07-22 descrito arriba fue revisado y preparado para publicacion en `main` y `origin/main`. `AGENTS.md` sigue sin seguimiento y no forma parte del desarrollo funcional.
+El desarrollo del 2026-07-22 descrito arriba fue publicado en `main` y `origin/main` mediante el commit `8280dc1 feat: consolidar ficha clinica y seguridad multi-tenant`. `AGENTS.md` sigue sin seguimiento y no forma parte del desarrollo funcional.
 
 ---
 
@@ -87,7 +87,7 @@ El desarrollo del 2026-07-22 descrito arriba fue revisado y preparado para publi
 ### Estado tecnico comprobado
 
 - Rama actual: `main`.
-- El desarrollo acumulado hasta el 2026-07-22 queda publicado en `origin/main`; el historial Git conserva el identificador exacto del commit.
+- Commit funcional compartido: `8280dc1 feat: consolidar ficha clinica y seguridad multi-tenant` (`origin/main`).
 - La publicacion del codigo no implica despliegue: las migraciones y variables nuevas siguen pendientes de aplicar y validar en la VPS.
 - Prisma validate/generate: OK.
 - Migraciones sobre PostgreSQL 16 vacio: 15/15 aplicadas y sin deriva respecto de `schema.prisma`.
