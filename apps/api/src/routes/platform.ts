@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
 import { requirePlatformAuth, signPlatformToken, verifyPlatformCredentials } from "../middleware/platformKey.js";
@@ -14,6 +14,7 @@ import {
   ensureSubscription,
 } from "../lib/entitlements.js";
 import { createPayphoneLink, newClientTransactionId } from "../lib/payphone.js";
+import { appendAuditLog, recordAudit } from "../lib/audit.js";
 import { ipAndEmailKey, rateLimit } from "../middleware/rateLimit.js";
 
 const router = Router();
@@ -23,15 +24,13 @@ const MAX_SUBSCRIPTION_AMOUNT = 10000;
 const platformLoginLimit = rateLimit({ windowMs: 15 * 60_000, max: 5, key: ipAndEmailKey });
 
 async function auditPlatform(req: Request, clinicId: string, action: string, label: string) {
-  await prisma.auditLog.create({
-    data: {
-      clinicId,
-      userId: null,
-      action,
-      cat: "plataforma",
-      label,
-      ip: req.ip ?? null,
-    },
+  await recordAudit({
+    clinicId,
+    userId: null,
+    action,
+    cat: "plataforma",
+    label,
+    ip: req.ip ?? null,
   });
 }
 
@@ -82,6 +81,9 @@ router.post("/payphone/NotificacionPago", async (req, res) => {
       });
       if (claimed.count !== 1) return;
 
+      await tx.$queryRaw(
+        Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`subscription:${pay.clinicId}`}))`,
+      );
       const sub = await tx.clinicSubscription.findUnique({ where: { clinicId: pay.clinicId } });
       const base = sub?.subscriptionEndsAt && sub.subscriptionEndsAt > now ? sub.subscriptionEndsAt : now;
       await tx.clinicSubscription.upsert({
@@ -99,14 +101,12 @@ router.post("/payphone/NotificacionPago", async (req, res) => {
           allowedModules: ALL_MODULES,
         },
       });
-      await tx.auditLog.create({
-        data: {
-          clinicId: pay.clinicId,
-          userId: null,
-          action: "Suscripcion activada por pago Payphone",
-          cat: "sistema",
-          label: `${pay.months} mes(es) - $${Number(pay.amount).toFixed(2)}`,
-        },
+      await appendAuditLog(tx, {
+        clinicId: pay.clinicId,
+        userId: null,
+        action: "Suscripcion activada por pago Payphone",
+        cat: "sistema",
+        label: `${pay.months} mes(es) - $${Number(pay.amount).toFixed(2)}`,
       });
     });
     return res.json({ Response: true, ErrorCode: "000" });
@@ -278,22 +278,28 @@ router.post("/clinics/:id/trial", async (req, res, next) => {
 router.post("/clinics/:id/extend", async (req, res, next) => {
   try {
     const body = z.object({ months: z.number().int().positive().max(MAX_SUBSCRIPTION_MONTHS).default(1) }).parse(req.body);
-    const clinic = await prisma.clinic.findUnique({ where: { id: req.params.id }, include: { subscription: true } });
+    const clinic = await prisma.clinic.findUnique({ where: { id: req.params.id } });
     if (!clinic) throw notFound("Clinica no encontrada");
     const now = new Date();
-    const base = clinic.subscription?.subscriptionEndsAt && clinic.subscription.subscriptionEndsAt > now
-      ? clinic.subscription.subscriptionEndsAt
-      : now;
-    await prisma.clinicSubscription.upsert({
-      where: { clinicId: clinic.id },
-      update: { status: "active", verifiedAt: now, subscriptionEndsAt: addMonths(base, body.months) },
-      create: {
-        clinicId: clinic.id,
-        status: "active",
-        verifiedAt: now,
-        subscriptionEndsAt: addMonths(now, body.months),
-        allowedModules: ALL_MODULES,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`subscription:${clinic.id}`}))`,
+      );
+      const current = await tx.clinicSubscription.findUnique({ where: { clinicId: clinic.id } });
+      const base = current?.subscriptionEndsAt && current.subscriptionEndsAt > now
+        ? current.subscriptionEndsAt
+        : now;
+      await tx.clinicSubscription.upsert({
+        where: { clinicId: clinic.id },
+        update: { status: "active", verifiedAt: now, subscriptionEndsAt: addMonths(base, body.months) },
+        create: {
+          clinicId: clinic.id,
+          status: "active",
+          verifiedAt: now,
+          subscriptionEndsAt: addMonths(now, body.months),
+          allowedModules: ALL_MODULES,
+        },
+      });
     });
     await auditPlatform(req, clinic.id, "Extendio suscripcion manualmente", `${body.months} mes(es)`);
     const fresh = await prisma.clinic.findUnique({

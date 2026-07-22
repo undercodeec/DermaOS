@@ -4,9 +4,10 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
 import { requireAuth, requireModule } from "../middleware/auth.js";
-import { audit } from "../lib/audit.js";
+import { appendAuditLog, audit } from "../lib/audit.js";
 import { badRequest, notFound } from "../lib/errors.js";
 import { createPayphoneLink, newClientTransactionId } from "../lib/payphone.js";
+import { assertPackagePaymentFits } from "../lib/package-payments.js";
 import { decryptSecret } from "../lib/secret-box.js";
 
 const router = Router();
@@ -108,6 +109,7 @@ router.post("/payphone/NotificacionPago", async (req, res) => {
           select: { id: true },
         });
         if (!balance) throw new Error("Relacion de paquete invalida para el cobro");
+        await assertPackagePaymentFits(tx, balance.id, payment.amount);
         await tx.packagePayment.create({
           data: {
             balanceId: balance.id,
@@ -118,14 +120,12 @@ router.post("/payphone/NotificacionPago", async (req, res) => {
           },
         });
       }
-      await tx.auditLog.create({
-        data: {
-          clinicId: provider.clinicId,
-          userId: null,
-          action: "Conciliacion automatica Payphone",
-          cat: "pagos",
-          label: `${payment.clientTransactionId ?? payment.id} - $${Number(payment.amount).toFixed(2)}`,
-        },
+      await appendAuditLog(tx, {
+        clinicId: provider.clinicId,
+        userId: null,
+        action: "Conciliacion automatica Payphone",
+        cat: "pagos",
+        label: `${payment.clientTransactionId ?? payment.id} - $${Number(payment.amount).toFixed(2)}`,
       });
     });
 
@@ -194,33 +194,89 @@ router.post("/", requireModule("pagos", "write"), async (req, res, next) => {
       throw badRequest("Configura Payphone en Sistema antes de generar cobros");
     }
     const clientTransactionId = newClientTransactionId();
-    const payphone = await createPayphoneLink(
-      { token: decryptSecret(provider.tokenEncrypted), storeId: provider.storeId },
-      {
-        amount: b.amount,
-        reference: b.conceptLabel,
-        clientTransactionId,
-        additionalData: `${b.conceptType}${b.conceptRefId ? `:${b.conceptRefId}` : ""}`,
-      },
-    );
-    const created = await prisma.payment.create({
+    const placeholder = await prisma.$transaction(async (tx) => {
+      if (b.conceptType === "paquete" && b.conceptRefId) {
+        await tx.payment.updateMany({
+          where: {
+            conceptType: "paquete",
+            conceptRefId: b.conceptRefId,
+            status: "pendiente",
+            providerStatus: "link_creating",
+            createdAt: { lt: new Date(Date.now() - 15 * 60_000) },
+          },
+          data: { status: "anulado", providerStatus: "link_creation_expired" },
+        });
+        const { remainingCents } = await assertPackagePaymentFits(tx, b.conceptRefId, b.amount);
+        const pending = await tx.payment.aggregate({
+          where: {
+            clinicId: req.user!.clinicId,
+            patientId: b.patientId,
+            conceptType: "paquete",
+            conceptRefId: b.conceptRefId,
+            status: "pendiente",
+          },
+          _sum: { amount: true },
+        });
+        const reservedCents = Math.round(Number(pending._sum.amount ?? 0) * 100);
+        const requestedCents = Math.round(b.amount * 100);
+        if (requestedCents + reservedCents > remainingCents) {
+          throw badRequest(
+            `Los links pendientes y este cobro superan el saldo disponible de $${(remainingCents / 100).toFixed(2)}`,
+          );
+        }
+      }
+      return tx.payment.create({
+        data: {
+          clinicId: req.user!.clinicId,
+          patientId: b.patientId,
+          conceptType: b.conceptType,
+          conceptRefId: b.conceptRefId ?? null,
+          conceptLabel: b.conceptLabel,
+          amount: b.amount,
+          method: "payphone",
+          status: "pendiente",
+          txId: clientTransactionId,
+          clientTransactionId,
+          payphoneStoreId: provider.storeId,
+          providerStatus: "link_creating",
+          note: b.note ?? null,
+        },
+      });
+    });
+    let payphone;
+    try {
+      payphone = await createPayphoneLink(
+        { token: decryptSecret(provider.tokenEncrypted), storeId: provider.storeId },
+        {
+          amount: b.amount,
+          reference: b.conceptLabel,
+          clientTransactionId,
+          additionalData: `${b.conceptType}${b.conceptRefId ? `:${b.conceptRefId}` : ""}`,
+        },
+      );
+    } catch (error) {
+      await prisma.payment.update({
+        where: { id: placeholder.id },
+        data: { status: "anulado", providerStatus: "link_failed" },
+      });
+      throw error;
+    }
+    const linked = await prisma.payment.updateMany({
+      where: { id: placeholder.id, status: "pendiente" },
       data: {
-        clinicId: req.user!.clinicId,
-        patientId: b.patientId,
-        conceptType: b.conceptType,
-        conceptRefId: b.conceptRefId ?? null,
-        conceptLabel: b.conceptLabel,
-        amount: b.amount,
-        method: "payphone",
-        status: "pendiente",
         payphoneLink: payphone.link,
-        txId: clientTransactionId,
-        clientTransactionId,
-        payphoneStoreId: provider.storeId,
         providerStatus: "link_created",
         providerPayload: payphone.payload,
-        note: b.note ?? null,
       },
+    });
+    if (linked.count !== 1) {
+      await prisma.payment.update({
+        where: { id: placeholder.id },
+        data: { payphoneLink: payphone.link },
+      });
+    }
+    const created = await prisma.payment.findUniqueOrThrow({
+      where: { id: placeholder.id },
       include: {
         patient: { select: { firstName: true, lastName: true, idNumber: true, phone: true } },
       },
@@ -294,6 +350,7 @@ router.patch("/:id/paid", requireModule("pagos", "reconcile"), async (req, res, 
           include: { package: true, patient: true },
         });
         if (!bal) throw badRequest("El bono asociado al cobro no es valido");
+        await assertPackagePaymentFits(tx, bal.id, cur.amount);
         await tx.packagePayment.create({
           data: {
             balanceId: bal.id,

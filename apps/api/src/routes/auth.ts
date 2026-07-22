@@ -7,6 +7,7 @@ import { signToken } from "../lib/jwt.js";
 import { requireAuth } from "../middleware/auth.js";
 import { ipAndEmailKey, rateLimit } from "../middleware/rateLimit.js";
 import { badRequest, unauthorized } from "../lib/errors.js";
+import { appendAuditLog, recordAudit } from "../lib/audit.js";
 import {
   generateLoginEmailCode,
   hashLoginEmailCode,
@@ -33,22 +34,21 @@ const passwordResetConfirmSchema = z.object({
 });
 
 function buildLoginResponse(user: UserRow) {
-  const token = signToken({ sub: user.id, email: user.email, role: user.role, clinicId: user.clinicId });
+  const token = signToken({
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+    clinicId: user.clinicId,
+    authVersion: user.authVersion,
+  });
   return { token, profile: serialize(user) };
 }
 
-function encodeEmailCodeState(userId: string, code: string, expiresAt: Date) {
-  return JSON.stringify({
-    kind: "email-code",
-    hash: hashLoginEmailCode(userId, code),
-    expiresAt: expiresAt.toISOString(),
-  });
-}
-
-function readEmailCodeState(raw: string | null) {
-  if (!raw) return null;
+function readEmailCodeState(hash: string | null, expiresAt: Date | null, legacyRaw: string | null) {
+  if (hash && expiresAt) return { hash, expiresAt };
+  if (!legacyRaw) return null;
   try {
-    const parsed = JSON.parse(raw) as { kind?: string; hash?: string; expiresAt?: string };
+    const parsed = JSON.parse(legacyRaw) as { kind?: string; hash?: string; expiresAt?: string };
     if (parsed.kind !== "email-code" || !parsed.hash || !parsed.expiresAt) return null;
     const expiresAt = new Date(parsed.expiresAt);
     if (Number.isNaN(expiresAt.getTime())) return null;
@@ -59,24 +59,25 @@ function readEmailCodeState(raw: string | null) {
 }
 
 async function completeLogin(user: UserRow, ip: string | null) {
+  const hasLegacyEmailCode = Boolean(readEmailCodeState(null, null, user.mfaSecret));
   await prisma.user.update({
     where: { id: user.id },
     data: {
       lastAccess: new Date(),
-      mfaSecret: null,
+      emailCodeHash: null,
+      emailCodeExpiresAt: null,
+      ...(hasLegacyEmailCode ? { mfaSecret: null } : {}),
     },
   });
-  await prisma.auditLog.create({
-    data: {
-      clinicId: user.clinicId,
-      userId: user.id,
-      action: "Inicio de sesion",
-      cat: "sesion",
-      label: user.mfaEnabled && isProductionAuthVerificationEnabled()
-        ? "Codigo por email verificado"
-        : "Sesion iniciada",
-      ip,
-    },
+  await recordAudit({
+    clinicId: user.clinicId,
+    userId: user.id,
+    action: "Inicio de sesion",
+    cat: "sesion",
+    label: user.mfaEnabled && isProductionAuthVerificationEnabled()
+      ? "Codigo por email verificado"
+      : "Sesion iniciada",
+    ip,
   });
   return buildLoginResponse(user);
 }
@@ -87,19 +88,18 @@ async function issueEmailCode(user: UserRow, ip: string | null) {
   await prisma.user.update({
     where: { id: user.id },
     data: {
-      mfaSecret: encodeEmailCodeState(user.id, code, expiresAt),
+      emailCodeHash: hashLoginEmailCode(user.id, code),
+      emailCodeExpiresAt: expiresAt,
     },
   });
   await sendLoginEmailCode(user.email, code);
-  await prisma.auditLog.create({
-    data: {
-      clinicId: user.clinicId,
-      userId: user.id,
-      action: "Envio codigo de acceso por email",
-      cat: "sesion",
-      label: user.email,
-      ip,
-    },
+  await recordAudit({
+    clinicId: user.clinicId,
+    userId: user.id,
+    action: "Envio codigo de acceso por email",
+    cat: "sesion",
+    label: user.email,
+    ip,
   });
   return {
     emailVerificationRequired: true,
@@ -137,8 +137,12 @@ router.post("/password-reset/request", passwordResetRequestLimit, async (req, re
       prisma.passwordResetCode.create({ data: { userId: user.id, codeHash: hashPasswordResetCode(user.id, code), expiresAt } }),
     ]);
     await sendPasswordResetEmailCode(user.email, code);
-    await prisma.auditLog.create({
-      data: { clinicId: user.clinicId, userId: user.id, action: "Solicitud de recuperacion de contrasena", cat: "sesion", ip: req.ip ?? null },
+    await recordAudit({
+      clinicId: user.clinicId,
+      userId: user.id,
+      action: "Solicitud de recuperacion de contrasena",
+      cat: "sesion",
+      ip: req.ip ?? null,
     });
     res.json({ ok: true });
   } catch (e) {
@@ -161,14 +165,35 @@ router.post("/password-reset/confirm", passwordResetConfirmLimit, async (req, re
     }
 
     const passwordHash = await bcrypt.hash(body.password, 12);
-    await prisma.$transaction([
-      prisma.user.update({ where: { id: user.id }, data: { passwordHash, mfaSecret: null } }),
-      prisma.passwordResetCode.update({ where: { id: reset.id }, data: { usedAt: new Date() } }),
-      prisma.passwordResetCode.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: new Date() } }),
-      prisma.auditLog.create({
-        data: { clinicId: user.clinicId, userId: user.id, action: "Contrasena restablecida", cat: "sesion", ip: req.ip ?? null },
-      }),
-    ]);
+    await prisma.$transaction(async (tx) => {
+      const usedAt = new Date();
+      const claimed = await tx.passwordResetCode.updateMany({
+        where: { id: reset.id, userId: user.id, usedAt: null, expiresAt: { gt: usedAt } },
+        data: { usedAt },
+      });
+      if (claimed.count !== 1) throw badRequest("El codigo es invalido o ya fue utilizado");
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          emailCodeHash: null,
+          emailCodeExpiresAt: null,
+          ...(readEmailCodeState(null, null, user.mfaSecret) ? { mfaSecret: null } : {}),
+          authVersion: { increment: 1 },
+        },
+      });
+      await tx.passwordResetCode.updateMany({
+        where: { userId: user.id, id: { not: reset.id }, usedAt: null },
+        data: { usedAt },
+      });
+      await appendAuditLog(tx, {
+        clinicId: user.clinicId,
+        userId: user.id,
+        action: "Contrasena restablecida",
+        cat: "sesion",
+        ip: req.ip ?? null,
+      });
+    });
     res.json({ ok: true });
   } catch (e) {
     next(e);
@@ -201,27 +226,30 @@ router.post("/login", loginLimit, async (req, res, next) => {
       return;
     }
 
-    const emailCodeState = readEmailCodeState(user.mfaSecret);
+    const emailCodeState = readEmailCodeState(user.emailCodeHash, user.emailCodeExpiresAt, user.mfaSecret);
     if (!emailCodeState) {
       throw badRequest("Solicite un nuevo codigo de verificacion");
     }
     if (emailCodeState.expiresAt.getTime() < Date.now()) {
+      const hasLegacyEmailCode = Boolean(readEmailCodeState(null, null, user.mfaSecret));
       await prisma.user.update({
         where: { id: user.id },
-        data: { mfaSecret: null },
+        data: {
+          emailCodeHash: null,
+          emailCodeExpiresAt: null,
+          ...(hasLegacyEmailCode ? { mfaSecret: null } : {}),
+        },
       });
       throw unauthorized("El codigo de verificacion expiro");
     }
     if (hashLoginEmailCode(user.id, body.emailCode) !== emailCodeState.hash) {
-      await prisma.auditLog.create({
-        data: {
-          clinicId: user.clinicId,
-          userId: user.id,
-          action: "Intento de inicio de sesion denegado",
-          cat: "sesion",
-          label: "Codigo de email invalido",
-          ip: req.ip ?? null,
-        },
+      await recordAudit({
+        clinicId: user.clinicId,
+        userId: user.id,
+        action: "Intento de inicio de sesion denegado",
+        cat: "sesion",
+        label: "Codigo de email invalido",
+        ip: req.ip ?? null,
       });
       throw unauthorized("Codigo de verificacion invalido");
     }
@@ -243,23 +271,24 @@ router.get("/me", requireAuth, async (req, res, next) => {
 });
 
 router.post("/logout", requireAuth, async (req, res) => {
-  await prisma.auditLog.create({
-    data: {
-      clinicId: req.user!.clinicId,
-      userId: req.user!.id,
-      action: "Cerro sesion",
-      cat: "sesion",
-      ip: req.ip ?? null,
-    },
+  await recordAudit({
+    clinicId: req.user!.clinicId,
+    userId: req.user!.id,
+    action: "Cerro sesion",
+    cat: "sesion",
+    ip: req.ip ?? null,
   });
   res.json({ ok: true });
 });
 
 type UserRow = NonNullable<Awaited<ReturnType<typeof prisma.user.findUnique>>>;
 function serialize(u: UserRow) {
-  const { passwordHash, mfaSecret, ...rest } = u;
+  const { passwordHash, mfaSecret, emailCodeHash, emailCodeExpiresAt, authVersion, ...rest } = u;
   void passwordHash;
   void mfaSecret;
+  void emailCodeHash;
+  void emailCodeExpiresAt;
+  void authVersion;
   return rest;
 }
 

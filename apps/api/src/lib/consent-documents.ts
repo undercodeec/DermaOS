@@ -48,6 +48,24 @@ export interface ConsentPdfInput {
   };
 }
 
+export function isValidPngSignatureDataUrl(value: string) {
+  const prefix = "data:image/png;base64,";
+  if (!value.startsWith(prefix)) return false;
+  let data: Buffer;
+  try {
+    data = Buffer.from(value.slice(prefix.length), "base64");
+  } catch {
+    return false;
+  }
+  if (data.length < 33 || data.length > 1_400_000) return false;
+  const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  if (!data.subarray(0, 8).equals(pngSignature)) return false;
+  if (data.readUInt32BE(8) !== 13 || data.toString("ascii", 12, 16) !== "IHDR") return false;
+  const width = data.readUInt32BE(16);
+  const height = data.readUInt32BE(20);
+  return width >= 80 && width <= 4096 && height >= 20 && height <= 2048;
+}
+
 export function buildConsentPdf(input: ConsentPdfInput): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", margin: 54, bufferPages: true, info: { Title: input.consent.title } });
@@ -106,12 +124,8 @@ export function buildConsentPdf(input: ConsentPdfInput): Promise<Buffer> {
 
     const signature = dataUrlBuffer(input.consent.signaturePath);
     if (signature) {
-      try {
-        doc.image(signature, doc.x, doc.y, { fit: [190, 75] });
-        doc.moveDown(5.2);
-      } catch {
-        doc.moveDown(2);
-      }
+      doc.image(signature, doc.x, doc.y, { fit: [190, 75] });
+      doc.moveDown(5.2);
     } else {
       doc.moveDown(3);
     }

@@ -14,7 +14,7 @@ import packagesRouter from "./routes/packages.js";
 import inventoryRouter from "./routes/inventory.js";
 import appointmentsRouter from "./routes/appointments.js";
 import paymentsRouter from "./routes/payments.js";
-// import invoicesRouter from "./routes/invoices.js"; // INVOICES_ENABLED
+import invoicesRouter from "./routes/invoices.js";
 import adminRouter from "./routes/admin.js";
 import platformRouter from "./routes/platform.js";
 
@@ -65,7 +65,7 @@ app.use("/packages", packagesRouter);
 app.use("/inventory", inventoryRouter);
 app.use("/appointments", appointmentsRouter);
 app.use("/payments", paymentsRouter);
-// app.use("/invoices", invoicesRouter); // INVOICES_ENABLED — pendiente integración SRI
+if (env.INVOICES_ENABLED) app.use("/invoices", invoicesRouter);
 app.use("/admin", adminRouter);
 app.use("/platform", platformRouter);
 app.use("/", catalogRouter);

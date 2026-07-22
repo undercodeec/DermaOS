@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
 import { requireAuth, requireModule, requireRole } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
-import { badRequest, conflict, notFound } from "../lib/errors.js";
+import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
 import { calcInvoiceTotals, invoiceNumber, sriAccessKey } from "../lib/sri.js";
 
 const router = Router();
@@ -32,6 +32,14 @@ async function ensureProfessionalForClinic(professionalId: string, clinicId: str
   });
   if (!professional) throw badRequest("Profesional no valido para esta clinica");
   return professional;
+}
+
+function assertProfessionalAuthorship(req: Express.Request, professionalId: string) {
+  if (req.user!.role !== "profesional" && req.user!.role !== "esteticista") return;
+  if (!req.user!.professionalId) throw forbidden("El usuario no tiene un profesional asociado");
+  if (req.user!.professionalId !== professionalId) {
+    throw forbidden("Solo puedes registrar o modificar actividad clínica con tu profesional asociado");
+  }
 }
 
 async function ensureServiceForClinic(serviceId: string, clinicId: string) {
@@ -145,7 +153,7 @@ router.post("/", requireModule("pacientes", "write"), async (req, res, next) => 
 });
 
 // ----- Evolución (SOAP) -----
-router.get("/:id/evolucion", async (req, res, next) => {
+router.get("/:id/evolucion", requireModule("historia"), async (req, res, next) => {
   try {
     const list = await prisma.clinicalRecord.findMany({
       where: { patientId: req.params.id, type: "evolucion" },
@@ -179,6 +187,7 @@ router.post("/:id/evolucion", requireModule("historia", "write"), async (req, re
     if (!pat) throw notFound("Paciente no encontrado");
     const body = newEvolucionSchema.parse(req.body);
     await ensureProfessionalForClinic(body.professionalId, req.user!.clinicId);
+    assertProfessionalAuthorship(req, body.professionalId);
     const r = await prisma.clinicalRecord.create({
       data: {
         patientId: pat.id,
@@ -206,9 +215,11 @@ router.patch("/:id/evolucion/:rid", requireModule("historia", "write"), async (r
   try {
     const cur = await prisma.clinicalRecord.findUnique({ where: { id: req.params.rid } });
     if (!cur || cur.patientId !== req.params.id || cur.type !== "evolucion") throw notFound("Evolución no encontrada");
+    assertProfessionalAuthorship(req, cur.professionalId);
     const body = updEvolucionSchema.parse(req.body);
     if (body.professionalId) {
       await ensureProfessionalForClinic(body.professionalId, req.user!.clinicId);
+      assertProfessionalAuthorship(req, body.professionalId);
     }
     const r = await prisma.clinicalRecord.update({
       where: { id: cur.id },
@@ -235,6 +246,7 @@ router.delete("/:id/evolucion/:rid", requireModule("historia", "write"), async (
   try {
     const cur = await prisma.clinicalRecord.findUnique({ where: { id: req.params.rid } });
     if (!cur || cur.patientId !== req.params.id || cur.type !== "evolucion") throw notFound("Evolución no encontrada");
+    assertProfessionalAuthorship(req, cur.professionalId);
     await prisma.clinicalRecord.delete({ where: { id: cur.id } });
     const pat = await prisma.patient.findUnique({ where: { id: cur.patientId } });
     await audit(req, "Eliminó evolución", "historia", pat ? `${pat.firstName} ${pat.lastName}` : "");
@@ -245,7 +257,7 @@ router.delete("/:id/evolucion/:rid", requireModule("historia", "write"), async (
 });
 
 // ----- Recetas -----
-router.get("/:id/recetas", async (req, res, next) => {
+router.get("/:id/recetas", requireModule("historia"), async (req, res, next) => {
   try {
     const list = await prisma.clinicalRecord.findMany({
       where: { patientId: req.params.id, type: "receta" },
@@ -275,6 +287,7 @@ router.post("/:id/recetas", requireModule("historia", "write"), async (req, res,
     if (!pat) throw notFound("Paciente no encontrado");
     const body = newRecetaSchema.parse(req.body);
     await ensureProfessionalForClinic(body.professionalId, req.user!.clinicId);
+    assertProfessionalAuthorship(req, body.professionalId);
     const r = await prisma.clinicalRecord.create({
       data: {
         patientId: pat.id,
@@ -300,9 +313,11 @@ router.patch("/:id/recetas/:rid", requireModule("historia", "write"), async (req
   try {
     const cur = await prisma.clinicalRecord.findUnique({ where: { id: req.params.rid } });
     if (!cur || cur.patientId !== req.params.id || cur.type !== "receta") throw notFound("Receta no encontrada");
+    assertProfessionalAuthorship(req, cur.professionalId);
     const body = updRecetaSchema.parse(req.body);
     if (body.professionalId) {
       await ensureProfessionalForClinic(body.professionalId, req.user!.clinicId);
+      assertProfessionalAuthorship(req, body.professionalId);
     }
     const prev = (cur.prescription as { templateId?: string; items: unknown[] } | null) ?? { items: [] };
     const r = await prisma.clinicalRecord.update({
@@ -325,6 +340,7 @@ router.delete("/:id/recetas/:rid", requireModule("historia", "write"), async (re
   try {
     const cur = await prisma.clinicalRecord.findUnique({ where: { id: req.params.rid } });
     if (!cur || cur.patientId !== req.params.id || cur.type !== "receta") throw notFound("Receta no encontrada");
+    assertProfessionalAuthorship(req, cur.professionalId);
     await prisma.clinicalRecord.delete({ where: { id: cur.id } });
     const pat = await prisma.patient.findUnique({ where: { id: cur.patientId } });
     await audit(req, "Eliminó receta", "historia", pat ? `${pat.firstName} ${pat.lastName}` : "");
@@ -444,7 +460,7 @@ router.post(
 );
 
 // ----- Procedures -----
-router.get("/:id/procedures", async (req, res, next) => {
+router.get("/:id/procedures", requireModule("procedimientos"), async (req, res, next) => {
   try {
     const list = await prisma.procedure.findMany({
       where: { patientId: req.params.id },
@@ -478,6 +494,7 @@ router.post("/:id/procedures", requireModule("procedimientos", "write"), async (
     if (consent.status !== "firmado") throw conflict("El consentimiento no está firmado");
     await ensureServiceForClinic(body.serviceId, req.user!.clinicId);
     await ensureProfessionalForClinic(body.professionalId, req.user!.clinicId);
+    assertProfessionalAuthorship(req, body.professionalId);
     const pr = await prisma.procedure.create({
       data: {
         patientId: pat.id,
@@ -502,7 +519,7 @@ router.post("/:id/procedures", requireModule("procedimientos", "write"), async (
 });
 
 // ----- Package balances (venta) -----
-router.get("/:id/balances", async (req, res, next) => {
+router.get("/:id/balances", requireModule("paquetes"), async (req, res, next) => {
   try {
     const list = await prisma.packageBalance.findMany({
       where: { patientId: req.params.id },
@@ -536,11 +553,21 @@ router.post("/:id/balances", requireModule("paquetes", "write"), async (req, res
     }
 
     const soldAt = new Date();
-    const vencimiento = new Date(Date.now() + (pk.validityDays || 365) * 864e5);
     if (body.initialPayment && body.initialPayment > Number(pk.price)) {
       throw badRequest("El abono inicial no puede superar el precio del paquete");
     }
     const bal = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`package:${pk.id}`}))`,
+      );
+      const currentPackage = await tx.package.findFirst({
+        where: { id: pk.id, clinicId: req.user!.clinicId, active: true },
+      });
+      if (!currentPackage) throw badRequest("Paquete no disponible");
+      if (body.initialPayment && body.initialPayment > Number(currentPackage.price)) {
+        throw badRequest("El abono inicial no puede superar el precio del paquete");
+      }
+      const vencimiento = new Date(soldAt.getTime() + (currentPackage.validityDays || 365) * 864e5);
       const created = await tx.packageBalance.create({
         data: {
           clinicId: req.user!.clinicId,
@@ -548,9 +575,9 @@ router.post("/:id/balances", requireModule("paquetes", "write"), async (req, res
           packageId: pk.id,
           soldAt,
           sellerProfessionalId: body.sellerProfessionalId ?? null,
-          sessionsTotal: pk.sessions,
+          sessionsTotal: currentPackage.sessions,
           sessionsUsed: 0,
-          price: pk.price,
+          price: currentPackage.price,
           vencimiento,
           status: "activo",
         },
@@ -578,7 +605,7 @@ router.post("/:id/balances", requireModule("paquetes", "write"), async (req, res
 });
 
 // ----- Invoices -----
-router.get("/:id/invoices", async (req, res, next) => {
+router.get("/:id/invoices", requireModule("facturacion"), async (req, res, next) => {
   try {
     if (!env.INVOICES_ENABLED) throw notFound("Facturacion no habilitada");
     const list = await prisma.invoice.findMany({
@@ -664,7 +691,7 @@ router.post("/:id/invoices", requireModule("facturacion", "write"), async (req, 
 });
 
 // ----- Photos -----
-router.get("/:id/photos", async (req, res, next) => {
+router.get("/:id/photos", requireModule("fotos"), async (req, res, next) => {
   try {
     const list = await prisma.photo.findMany({
       where: { patientId: req.params.id },

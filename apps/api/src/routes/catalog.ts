@@ -241,7 +241,7 @@ router.patch("/report-notes/:id", requireModule("reportes"), requireRole("admin"
 });
 
 // Búsqueda global de pacientes (header)
-router.get("/search/patients", async (req, res, next) => {
+router.get("/search/patients", requireModule("pacientes"), async (req, res, next) => {
   try {
     const q = String(req.query.q ?? "").trim();
     if (q.length < 2) return res.json([]);
@@ -284,7 +284,7 @@ router.get("/professionals", async (req, res, next) => {
 });
 
 // Catálogo de plantillas de consentimiento
-router.get("/consent-templates", async (req, res, next) => {
+router.get("/consent-templates", requireModule("consentimientos"), async (req, res, next) => {
   try {
     const list = await prisma.consentTemplate.findMany({
       where: {

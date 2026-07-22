@@ -5,7 +5,7 @@ import { Icon } from "@/components/icons";
 import { fmtDate, fmtMoney, fmtTime } from "@/lib/helpers";
 import { useAuth } from "@/lib/auth";
 import { roleCanWrite } from "@/lib/permissions";
-import type { Invoice, InvoiceLine, InvoiceStatus } from "@/lib/types";
+import type { InvoiceLine, InvoiceStatus } from "@/lib/types";
 import { advanceInvoice, getInvoice } from "./api";
 
 const EMISOR = {

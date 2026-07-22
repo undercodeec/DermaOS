@@ -150,6 +150,9 @@ model User {
   role           Role
   mfaEnabled     Boolean   @default(false) @map("mfa_enabled")
   mfaSecret      String?   @map("mfa_secret")
+  emailCodeHash  String?   @map("email_code_hash")
+  emailCodeExpiresAt DateTime? @map("email_code_expires_at") @db.Timestamptz
+  authVersion    Int       @default(0) @map("auth_version")
   active         Boolean   @default(true)
   professionalId String?   @map("professional_id") @db.Uuid
   professional   Professional? @relation(fields: [professionalId], references: [id], onDelete: SetNull)
@@ -199,6 +202,7 @@ model Professional {
   redemptions         PackageRedemption[]
 
   @@index([clinicId])
+  @@unique([id, clinicId], map: "professionals_id_clinic_id_key")
   @@map("professionals")
 }
 
@@ -229,6 +233,7 @@ model Patient {
   payments         Payment[]
 
   @@unique([clinicId, idType, idNumber])
+  @@unique([id, clinicId], map: "patients_id_clinic_id_key")
   @@index([clinicId])
   @@index([lastName, firstName])
   @@map("patients")
@@ -250,6 +255,7 @@ model Service {
   packages     Package[]
 
   @@index([clinicId])
+  @@unique([id, clinicId], map: "services_id_clinic_id_key")
   @@map("services")
 }
 
@@ -258,11 +264,11 @@ model Appointment {
   clinicId       String            @map("clinic_id") @db.Uuid
   clinic         Clinic            @relation(fields: [clinicId], references: [id])
   patientId      String            @map("patient_id") @db.Uuid
-  patient        Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient        Patient           @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade, map: "appointments_patient_same_clinic_fkey")
   serviceId      String            @map("service_id") @db.Uuid
-  service        Service           @relation(fields: [serviceId], references: [id])
+  service        Service           @relation(fields: [serviceId, clinicId], references: [id, clinicId], map: "appointments_service_same_clinic_fkey")
   professionalId String            @map("professional_id") @db.Uuid
-  professional   Professional      @relation(fields: [professionalId], references: [id])
+  professional   Professional      @relation(fields: [professionalId, clinicId], references: [id, clinicId], map: "appointments_professional_same_clinic_fkey")
   startAt        DateTime          @map("start_at") @db.Timestamptz
   endAt          DateTime          @map("end_at") @db.Timestamptz
   kind           AppointmentKind
@@ -324,14 +330,14 @@ model ConsentTemplate {
   procedureType String      @map("procedure_type")
   body          String
   status        ConsentTemplateStatus @default(borrador)
-  seriesId      String      @default(uuid()) @map("series_id") @db.Uuid
+  seriesId      String      @default(dbgenerated("gen_random_uuid()")) @map("series_id") @db.Uuid
   version       Int         @default(1)
   sourceName    String?     @map("source_name")
   sourceMime    String?     @map("source_mime")
   sourceSha256  String?     @map("source_sha256")
   sourceFile    Bytes?      @map("source_file")
   createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  updatedAt     DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   approvedAt    DateTime?   @map("approved_at") @db.Timestamptz
   allowedRoles  Role[]      @default([admin, profesional]) @map("allowed_roles")
 
@@ -381,7 +387,7 @@ model Consent {
 }
 
 model ConsentEvent {
-  id            String           @id @default(uuid()) @db.Uuid
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   consentId     String           @map("consent_id") @db.Uuid
   consent       Consent          @relation(fields: [consentId], references: [id], onDelete: Restrict)
   kind          ConsentEventKind
@@ -468,7 +474,7 @@ model Package {
   clinicId     String  @map("clinic_id") @db.Uuid
   clinic       Clinic  @relation(fields: [clinicId], references: [id])
   serviceId    String  @map("service_id") @db.Uuid
-  service      Service @relation(fields: [serviceId], references: [id])
+  service      Service @relation(fields: [serviceId, clinicId], references: [id, clinicId], map: "packages_service_same_clinic_fkey")
   name         String
   sessions     Int
   price        Decimal @db.Decimal(10, 2)
@@ -479,6 +485,7 @@ model Package {
   balances PackageBalance[]
 
   @@index([clinicId])
+  @@unique([id, clinicId], map: "packages_id_clinic_id_key")
   @@map("packages")
 }
 
@@ -487,9 +494,9 @@ model PackageBalance {
   clinicId               String               @map("clinic_id") @db.Uuid
   clinic                 Clinic               @relation(fields: [clinicId], references: [id])
   patientId              String               @map("patient_id") @db.Uuid
-  patient                Patient              @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient                Patient              @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade, map: "package_balances_patient_same_clinic_fkey")
   packageId              String               @map("package_id") @db.Uuid
-  package                Package              @relation(fields: [packageId], references: [id])
+  package                Package              @relation(fields: [packageId, clinicId], references: [id, clinicId], map: "package_balances_package_same_clinic_fkey")
   soldAt                 DateTime             @default(now()) @map("sold_at") @db.Timestamptz
   sellerProfessionalId   String?              @map("seller_professional_id") @db.Uuid
   sellerProfessional     Professional?        @relation("PackageSeller", fields: [sellerProfessionalId], references: [id])
@@ -542,7 +549,7 @@ model Payment {
   clinicId      String         @map("clinic_id") @db.Uuid
   clinic        Clinic         @relation(fields: [clinicId], references: [id])
   patientId     String         @map("patient_id") @db.Uuid
-  patient       Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient       Patient        @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade, map: "payments_patient_same_clinic_fkey")
   conceptType   PaymentConcept @map("concept_type")
   conceptRefId  String?        @map("concept_ref_id") @db.Uuid
   conceptLabel  String         @map("concept_label")
@@ -630,7 +637,7 @@ model PlatformSubscriptionPayment {
   @@index([clinicId])
   @@index([status, createdAt])
   @@index([payphoneStoreId])
-  @@unique([payphoneStoreId, payphoneTransactionId])
+  @@unique([payphoneStoreId, payphoneTransactionId], map: "platform_subscription_payments_payphone_store_id_payphone_trans")
   @@map("platform_subscription_payments")
 }
 
@@ -658,7 +665,7 @@ model AuditLog {
 }
 
 model ReportNote {
-  id          String           @id @default(uuid()) @db.Uuid
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   clinicId    String           @map("clinic_id") @db.Uuid
   clinic      Clinic           @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   createdById String           @map("created_by_id") @db.Uuid

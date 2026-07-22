@@ -7,7 +7,13 @@ import { prisma } from "../db.js";
 import { requireAuth, requireModule, requireRole } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
-import { buildConsentPdf, consentContentHash, extractConsentText, sha256 } from "../lib/consent-documents.js";
+import {
+  buildConsentPdf,
+  consentContentHash,
+  extractConsentText,
+  isValidPngSignatureDataUrl,
+  sha256,
+} from "../lib/consent-documents.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -134,6 +140,9 @@ router.post(
     if (c.patient.clinicId !== req.user!.clinicId) throw forbidden();
     if (c.status !== "pendiente") throw conflict("Este consentimiento ya no está pendiente de firma");
     const body = signSchema.parse(req.body);
+    if (!isValidPngSignatureDataUrl(body.signaturePath)) {
+      throw badRequest("La firma PNG está vacía, dañada o no tiene dimensiones válidas");
+    }
     const capturingUser = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { fullName: true } });
     const signedAt = new Date();
     const patientName = c.patientName ?? `${c.patient.firstName} ${c.patient.lastName}`;
@@ -312,6 +321,9 @@ router.get("/:id/pdf", requireModule("consentimientos"), async (req, res, next) 
     });
     if (!consent) throw notFound("Consentimiento no encontrado");
     if (consent.patient.clinicId !== req.user!.clinicId) throw forbidden();
+    if (!consent.signedAt || (consent.status !== "firmado" && consent.status !== "revocado")) {
+      throw conflict("El PDF legal solo está disponible después de firmar el consentimiento");
+    }
     const title = consent.templateTitle ?? consent.template?.title ?? "Consentimiento informado";
     const storedPdf = consent.finalPdf ? Buffer.from(consent.finalPdf) : null;
     if (storedPdf && consent.pdfHash && sha256(storedPdf) !== consent.pdfHash) {
@@ -342,6 +354,7 @@ router.get("/:id/pdf", requireModule("consentimientos"), async (req, res, next) 
     if (!pdf) throw notFound("PDF de consentimiento no disponible");
     const safeName = title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-|-$/g, "");
     res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Content-Disposition", `attachment; filename="${safeName || "consentimiento"}.pdf"`);
     res.setHeader("Content-Length", String(pdf.length));
     await audit(req, "Descargó consentimiento en PDF", "consentimiento", `${title} · ${consent.patient.firstName} ${consent.patient.lastName}`);

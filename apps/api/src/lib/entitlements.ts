@@ -26,7 +26,13 @@ export function addDays(from: Date, days: number) {
 
 export function addMonths(from: Date, months: number) {
   const d = new Date(from);
-  d.setMonth(d.getMonth() + months);
+  const originalDay = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  const lastDayOfTargetMonth = new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  d.setUTCDate(Math.min(originalDay, lastDayOfTargetMonth));
   return d;
 }
 

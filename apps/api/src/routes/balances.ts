@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { requireAuth, requireModule } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
 import { notFound } from "../lib/errors.js";
+import { assertPackagePaymentFits } from "../lib/package-payments.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -22,13 +23,16 @@ router.post("/:id/abonos", requireModule("paquetes", "write"), async (req, res, 
     });
     if (!bal) throw notFound("Bono no encontrado");
     const body = abonoSchema.parse(req.body);
-    const pay = await prisma.packagePayment.create({
-      data: {
-        balanceId: bal.id,
-        amount: body.amount,
-        method: body.method,
-        note: body.note ?? "",
-      },
+    const pay = await prisma.$transaction(async (tx) => {
+      await assertPackagePaymentFits(tx, bal.id, body.amount, { includePendingLinks: true });
+      return tx.packagePayment.create({
+        data: {
+          balanceId: bal.id,
+          amount: body.amount,
+          method: body.method,
+          note: body.note ?? "",
+        },
+      });
     });
     await audit(
       req,

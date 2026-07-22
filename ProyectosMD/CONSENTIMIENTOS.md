@@ -18,7 +18,7 @@ Solo las plantillas aprobadas y autorizadas para el rol activo aparecen al gener
 
 Al generar un consentimiento se guarda una copia del título, tipo, versión y texto legal. Por eso una modificación futura de la plantilla no altera lo que aceptó el paciente.
 
-La firma exige la aceptación expresa y una firma manuscrita en pantalla. Se registran fecha, hora, IP y usuario en auditoría. Después de firmar, el PDF puede descargarse desde la pestaña **Consentimientos** del paciente e incluye:
+La firma exige la aceptación expresa y una firma manuscrita en pantalla. La API valida que el dato recibido tenga estructura PNG real, dimensiones útiles y que el generador de PDF pueda decodificarlo; un prefijo base64 por sí solo no permite firmar. Se registran fecha, hora, IP y usuario en auditoría. Después de firmar, el PDF puede descargarse desde la pestaña **Consentimientos** del paciente e incluye:
 
 - logo, nombre y RUC de la clínica;
 - identificación del paciente;
@@ -26,11 +26,13 @@ La firma exige la aceptación expresa y una firma manuscrita en pantalla. Se reg
 - texto legal congelado;
 - firma manuscrita, fecha, IP e identificador del documento.
 
-El PDF definitivo se almacena al firmar junto con las huellas SHA-256 del contenido, firma y PDF. Los registros firmados quedan bloqueados mediante triggers PostgreSQL. Las adendas, correcciones y revocaciones se agregan como eventos encadenados; nunca modifican el original.
+El PDF definitivo se almacena al firmar junto con las huellas SHA-256 del contenido, firma y PDF. Un consentimiento pendiente no se expone como PDF legal y las respuestas PDF usan caché privada deshabilitada. Los registros firmados quedan bloqueados mediante triggers PostgreSQL. Las adendas, correcciones y revocaciones se agregan como eventos encadenados; nunca modifican el original.
+
+La bitácora de firma forma parte de la misma cadena hash por clínica usada por login, registro, pagos, webhooks y plataforma. Esto evita que existan eventos relevantes creados fuera del encadenamiento de auditoría.
 
 ## Base de datos
 
-Antes de iniciar la API deben aplicarse las migraciones `20260720000000_consent_template_workflow` y `20260720010000_immutable_signed_consents`, y regenerarse Prisma:
+Antes de iniciar la API deben aplicarse todas las migraciones pendientes, incluidas `20260720000000_consent_template_workflow`, `20260720010000_immutable_signed_consents`, `20260721000000_harden_auth_sessions` y `20260721010000_tenant_integrity_barrier`, y regenerarse Prisma:
 
 ```powershell
 pnpm --filter @derma-os/api exec prisma migrate deploy

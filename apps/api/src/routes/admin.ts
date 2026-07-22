@@ -469,6 +469,14 @@ router.patch("/users/:id", async (req, res, next) => {
     }
 
     const passwordHash = b.password ? await bcrypt.hash(b.password, 12) : undefined;
+    const invalidatesSessions = Boolean(
+      passwordHash
+      || (email && email !== cur.email)
+      || (b.active !== undefined && b.active !== cur.active)
+      || (b.mfaEnabled !== undefined && b.mfaEnabled !== cur.mfaEnabled)
+      || (b.role && b.role !== cur.role)
+      || (b.professionalId !== undefined && b.professionalId !== cur.professionalId),
+    );
     const u = await prisma.user.update({
       where: { id: cur.id },
       data: {
@@ -479,6 +487,7 @@ router.patch("/users/:id", async (req, res, next) => {
         mfaEnabled: b.mfaEnabled ?? cur.mfaEnabled,
         role: b.role ?? cur.role,
         professionalId: b.professionalId !== undefined ? b.professionalId || null : cur.professionalId,
+        ...(invalidatesSessions ? { authVersion: { increment: 1 } } : {}),
       },
       select: {
         id: true,
@@ -521,7 +530,15 @@ router.post("/users/:id/mfa/reset", async (req, res, next) => {
       where: { id: req.params.id, clinicId: req.user!.clinicId },
     });
     if (!cur) throw notFound("Usuario no encontrado");
-    await prisma.user.update({ where: { id: cur.id }, data: { mfaSecret: null } });
+    await prisma.user.update({
+      where: { id: cur.id },
+      data: {
+        mfaSecret: null,
+        emailCodeHash: null,
+        emailCodeExpiresAt: null,
+        authVersion: { increment: 1 },
+      },
+    });
     await audit(req, "Reseteó MFA de usuario", "sistema", cur.fullName);
     res.json({ ok: true });
   } catch (e) {

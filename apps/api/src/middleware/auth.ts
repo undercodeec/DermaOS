@@ -43,10 +43,11 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
         active: true,
         clinicId: true,
         professionalId: true,
+        authVersion: true,
         clinic: { select: { active: true } },
       },
     });
-    if (!user?.active || !user.clinic.active) {
+    if (!user?.active || !user.clinic.active || user.authVersion !== payload.authVersion) {
       return next(unauthorized("Usuario o clinica inactiva"));
     }
     req.user = {

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireAuth, requireModule } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
-import { forbidden, notFound } from "../lib/errors.js";
+import { badRequest, forbidden, notFound } from "../lib/errors.js";
 
 const router = Router();
 router.use(requireAuth, requireModule("inventario"));
@@ -105,7 +105,9 @@ router.delete("/:id", requireModule("inventario", "write"), async (req, res, nex
   }
 });
 
-const adjustSchema = z.object({ delta: z.number() });
+const adjustSchema = z.object({
+  delta: z.number().finite().refine((value) => value !== 0, "El ajuste no puede ser cero"),
+});
 
 router.patch("/:id/adjust", requireModule("inventario", "consume"), async (req, res, next) => {
   try {
@@ -117,10 +119,26 @@ router.patch("/:id/adjust", requireModule("inventario", "consume"), async (req, 
     if (req.user!.role !== "admin" && delta > 0) {
       throw forbidden("Solo un administrador puede reponer inventario");
     }
-    const newStock = Math.max(0, Number(cur.stock) + delta);
-    const item = await prisma.inventoryItem.update({
-      where: { id: cur.id },
-      data: { stock: newStock },
+    const amount = Math.abs(delta);
+    const item = await prisma.$transaction(async (tx) => {
+      const updated = await tx.inventoryItem.updateMany({
+        where: {
+          id: cur.id,
+          clinicId: req.user!.clinicId,
+          ...(delta < 0 ? { stock: { gte: amount } } : {}),
+        },
+        data: {
+          stock: delta < 0 ? { decrement: amount } : { increment: amount },
+        },
+      });
+      if (updated.count !== 1) {
+        const exists = await tx.inventoryItem.count({
+          where: { id: cur.id, clinicId: req.user!.clinicId },
+        });
+        if (!exists) throw notFound("Ítem no encontrado");
+        throw badRequest("Stock insuficiente para registrar el consumo completo");
+      }
+      return tx.inventoryItem.findUniqueOrThrow({ where: { id: cur.id } });
     });
     await audit(
       req,

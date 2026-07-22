@@ -30,10 +30,48 @@ services:
         fromDatabase:
           name: derma-os-db
           property: connectionString
+      - key: DIRECT_URL
+        fromDatabase:
+          name: derma-os-db
+          property: connectionString
       - key: JWT_SECRET
         generateValue: true   # Render genera un secreto aleatorio automáticamente
       - key: JWT_EXPIRES_IN
         value: "12h"
+      - key: PLATFORM_REGISTER_KEY
+        generateValue: true
+      - key: PLATFORM_ADMIN_EMAIL
+        value: gerencia@undercodeec.com
+      - key: PLATFORM_ADMIN_PASSWORD
+        sync: false
+      - key: PLATFORM_JWT_SECRET
+        generateValue: true
+      - key: PAYPHONE_CREDENTIAL_KEY
+        generateValue: true
+      - key: PLATFORM_PAYPHONE_TOKEN
+        sync: false
+      - key: PLATFORM_PAYPHONE_STORE_ID
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "465"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: INVOICES_ENABLED
+        value: "false"
+      - key: PHOTO_STORAGE_PROVIDER
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_PHOTO_BUCKET
+        value: clinical-photos
       - key: UPLOAD_DIR
         value: uploads
       - key: CORS_ORIGIN

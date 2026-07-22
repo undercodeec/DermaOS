@@ -99,6 +99,8 @@ router.get("/:id/file", requireModule("fotos"), async (req, res, next) => {
     if (!image) throw notFound();
     await audit(req, "Visualizó fotografía clínica", "fotos", p.lesionTag);
     res.setHeader("Content-Type", guessMime(p.storagePath));
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Content-Length", String(image.length));
     res.send(image);
   } catch (e) {
     next(e);

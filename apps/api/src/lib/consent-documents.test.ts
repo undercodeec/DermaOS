@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildConsentPdf, consentContentHash, extractConsentText, sha256 } from "./consent-documents.js";
+import {
+  buildConsentPdf,
+  consentContentHash,
+  extractConsentText,
+  isValidPngSignatureDataUrl,
+  sha256,
+} from "./consent-documents.js";
 
 test("genera un PDF de consentimiento con datos clínicos", async () => {
   const signedAt = new Date("2026-07-20T15:00:00.000Z");
@@ -63,5 +69,15 @@ test("la huella cambia si se modifica el texto legal", () => {
   assert.notEqual(
     consentContentHash({ ...base, templateBody: "Texto legal original" }),
     consentContentHash({ ...base, templateBody: "Texto legal alterado" }),
+  );
+});
+
+test("rechaza firmas que solo aparentan ser PNG por el prefijo base64", () => {
+  assert.equal(isValidPngSignatureDataUrl("data:image/png;base64,ZmlybWE="), false);
+  assert.equal(
+    isValidPngSignatureDataUrl(
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    ),
+    false,
   );
 });

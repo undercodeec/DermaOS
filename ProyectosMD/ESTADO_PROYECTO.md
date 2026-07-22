@@ -1,23 +1,75 @@
 # 📋 ESTADO DEL PROYECTO — DERMA-OS
-> Ultima actualizacion: 2026-07-18 (correcciones derivadas de auditoria de codigo, seguridad e integridad)
+> Ultima actualizacion: 2026-07-21 (flujo acumulado, correcciones validadas y punto de reanudacion en VPS)
+
+---
+
+## Flujo de desarrollo acumulado y punto de reanudacion (2026-07-21)
+
+### Recorrido realizado
+
+1. **MVP clinico (2026-06-18 al 2026-06-20)**
+   - Se implementaron pacientes, historia SOAP, recetas, fotografias, consentimientos iniciales, procedimientos, paquetes, agenda, inventario, facturacion y dashboard.
+   - Se incorporaron roles, permisos, auditoria y el primer modelo multi-tenant por clinica.
+2. **Operacion SaaS y pagos (2026-07-17)**
+   - Registro de clinicas, demo de 7 dias, suscripciones, panel de plataforma y Payphone por clinica.
+   - Base y seed quedaron sin usuarios ni datos demo precargados.
+3. **Primer hardening (2026-07-18)**
+   - Se reforzaron webhooks, redenciones, aislamiento de IDs, validacion de archivos, secretos y flujo de recuperacion de contrasena.
+4. **Consentimientos legales versionados (2026-07-20)**
+   - Plantillas con borrador/aprobacion/versionado, texto legal congelado, PDF definitivo, hashes, eventos y revocacion inmutable.
+5. **Auditoria integral y correcciones (2026-07-21)**
+   - Se revisaron API, dashboard, Prisma, migraciones, dependencias y alineacion con `CONSENTIMIENTOS.md` e investigacion historica.
+   - Se corrigieron permisos por modulo, autoria clinica, agenda, paquetes, abonos, Payphone, inventario, suscripciones, firmas, sesiones, auditoria, despliegue y dependencias.
+   - Se agregaron las migraciones `20260721000000_harden_auth_sessions` y `20260721010000_tenant_integrity_barrier`.
+
+### Estado tecnico comprobado
+
+- Rama actual: `main`.
+- Ultimo commit compartido: `a238755 feat(auth): agregar recuperacion de contrasena` (`origin/main`).
+- Las correcciones del 2026-07-21 estan en el arbol de trabajo local: **todavia no tienen commit, push ni despliegue**.
+- Prisma validate/generate: OK.
+- Migraciones sobre PostgreSQL 16 vacio: 14/14 aplicadas y sin deriva respecto de `schema.prisma`.
+- Barrera multi-tenant: una cita con paciente de otra clinica fue rechazada por PostgreSQL.
+- API: typecheck, build y 14/14 pruebas OK.
+- Dashboard: lint, typecheck y build OK; 973 modulos transformados.
+- Dependencias de produccion: `pnpm audit --prod` sin vulnerabilidades conocidas.
+- El contenedor PostgreSQL y el runtime Node portatil usados para validar fueron retirados; no se modifico ninguna base real.
+
+### Punto exacto para continuar en la proxima sesion
+
+1. Revisar el diff local y separar cualquier archivo ajeno antes del commit; `AGENTS.md` aparece sin seguimiento y no forma parte de las correcciones descritas.
+2. Hacer backup de cualquier base que vaya a recibir las migraciones.
+3. Aplicar `prisma migrate deploy`; la barrera multi-tenant se detendra deliberadamente si detecta relaciones historicas entre clinicas distintas.
+4. Ejecutar smoke tests HTTP con dos clinicas, permisos por rol, concurrencia de agenda/abonos/webhooks, firma y descarga de consentimientos y acceso protegido a fotos.
+5. Corregir cualquier hallazgo, repetir build/lint/pruebas y solo entonces crear commit y push con autorizacion explicita.
+6. Continuar el despliegue VPS desde el paso 4 descrito al final de este documento.
+
+No usar en una base con datos reales `prisma db push`, `db:reset`, `db:clean` ni `db:seed`.
 
 ---
 
 ## 🏗️ Arquitectura de Producción
 
 ```
-┌──────────────┐       ┌──────────────────┐       ┌──────────────────┐
-│   Netlify    │       │     Render       │       │    Supabase      │
-│  (Frontend)  │──────▶│   (API Express)  │──────▶│  (PostgreSQL)    │
-│  React/Vite  │       │  Node.js/Prisma  │       │   Serverless     │
-└──────────────┘       └──────────────────┘       └──────────────────┘
+┌──────────────────────────────── VPS ────────────────────────────────┐
+│ Nginx + HTTPS                                                      │
+│   ├── app.<dominio>  → Dashboard React/Vite estatico              │
+│   └── api.<dominio>  → API Express/Prisma (systemd)               │
+│                              │                                     │
+│                              └── PostgreSQL local no publico       │
+└────────────────────────────────────────────────────────────────────┘
+                               │
+                               └── Supabase Storage privado (fase posterior)
 ```
 
-| Componente | Plataforma | URL | Plan |
-|-----------|-----------|-----|------|
-| **Dashboard** | Netlify | `https://dermasos.netlify.app` | Free |
-| **API** | Render | `https://derma-os-api.onrender.com` | Free |
-| **Base de Datos** | Supabase | Panel de Supabase | Free (500 MB) |
+| Componente | Destino vigente | Estado |
+|-----------|-----------------|--------|
+| **Dashboard** | Nginx en VPS, `app.<dominio>` | Pendiente desde paso 6 |
+| **API** | Node/systemd en VPS, `api.<dominio>` | Pendiente desde paso 4 |
+| **Base de datos** | PostgreSQL en la misma VPS, puerto no publico | Instalacion inicial completada; esquema pendiente |
+| **Fotos** | Directorio persistente local; Supabase Storage privado despues | Pendiente de configurar/probar |
+
+Render, Netlify y PostgreSQL de Supabase corresponden al despliegue anterior y no son la arquitectura objetivo vigente.
 
 ---
 
@@ -28,7 +80,7 @@ derma-os/
 ├── apps/
 │   ├── api/                          # Backend Express + Prisma
 │   │   ├── prisma/
-│   │   │   ├── schema.prisma         # Esquema de BD (con directUrl para Supabase)
+│   │   │   ├── schema.prisma         # Esquema y relaciones de BD
 │   │   │   ├── seed.ts               # Limpieza total; no crea datos precargados
 │   │   │   └── migrations/           # Migraciones de Prisma
 │   │   ├── src/
@@ -51,8 +103,8 @@ derma-os/
 │       ├── .env.local                # VITE_API_URL (local: http://127.0.0.1:4000)
 │       └── vite.config.ts
 │
-├── netlify.toml                      # Config de deploy para Netlify
-├── render.yaml                       # Blueprint de deploy para Render
+├── netlify.toml                      # Config historica de Netlify
+├── render.yaml                       # Blueprint historico/alternativo de Render
 ├── package.json                      # Scripts raíz del monorepo
 ├── pnpm-workspace.yaml               # Workspace config
 └── .gitignore                        # Protege .env, .env.supabase, .env.local
@@ -68,12 +120,14 @@ derma-os/
 pnpm dev                              # Levanta API + Dashboard
 ```
 
-### Cambiar a Supabase (cuando necesites migrar datos a producción)
+### Conectar al PostgreSQL de Supabase heredado (solo si se requiere)
 ```powershell
 copy apps\api\.env.supabase apps\api\.env
-pnpm --filter @derma-os/api db:migrate
-pnpm --filter @derma-os/api db:seed        # Limpia todo; no crea datos demo
+pnpm --filter @derma-os/api exec prisma migrate deploy
 ```
+
+No ejecutar `db:seed`: el seed actual limpia datos y no debe formar parte de un despliegue.
+La produccion objetivo vigente usa PostgreSQL local en la VPS; este cambio de `.env` no forma parte del flujo normal.
 
 ### Volver a local (después de migrar)
 ```powershell
@@ -81,14 +135,11 @@ copy apps\api\.env.local apps\api\.env
 ```
 
 ### Desplegar a producción (cuando estés listo)
-```powershell
-git add .
-git commit -m "descripción del cambio"
-git push                              # ← Esto dispara deploy en Render y Netlify
-```
+1. Revisar, probar, crear commit y hacer push a GitHub.
+2. En la VPS: obtener el commit aprobado, instalar con lockfile, regenerar Prisma, aplicar migraciones y construir.
+3. Reiniciar `derma-api`, recargar Nginx y ejecutar las pruebas posteriores al despliegue.
 
-> ⚠️ **IMPORTANTE**: No hacer `git push` hasta que estés seguro de que los cambios
-> están listos para producción. Un `git commit` sin `push` es seguro y no despliega nada.
+Un push ya no debe considerarse despliegue completo: la VPS requiere actualización y reinicio controlados. No hacer push hasta revisar los cambios locales actuales.
 
 ---
 
@@ -105,25 +156,25 @@ CORS_ORIGIN="http://localhost:5173"
 PORT=4000
 ```
 
-### API en Render (producción)
+### API en VPS (producción)
 | Variable | Valor |
 |----------|-------|
 | `NODE_ENV` | `production` |
-| `DATABASE_URL` | URI de Supabase (puerto `6543`, pgbouncer) |
-| `DIRECT_URL` | URI de Supabase (puerto `5432`, directo) |
-| `JWT_SECRET` | Auto-generado por Render |
+| `DATABASE_URL` | PostgreSQL local de la VPS; usuario exclusivo de la API |
+| `DIRECT_URL` | Conexion directa al mismo PostgreSQL para migraciones |
+| `JWT_SECRET` | Secreto aleatorio de al menos 32 caracteres |
 | `JWT_EXPIRES_IN` | `12h` |
-| `CORS_ORIGIN` | `https://dermasos.netlify.app` |
+| `CORS_ORIGIN` | `https://app.<dominio>` |
 | `PAYPHONE_CREDENTIAL_KEY` | Clave fuerte para cifrar tokens Payphone por clínica |
 | `PAYPHONE_API_BASE` | `https://pay.payphonetodoesposible.com/api` |
 | `PLATFORM_PAYPHONE_TOKEN` | Token Payphone Business de DERMA-OS para cobrar suscripciones |
 | `PLATFORM_PAYPHONE_STORE_ID` | Store ID Payphone Business de DERMA-OS |
 | `PLATFORM_SUBSCRIPTION_MONTHLY_AMOUNT` | Valor mensual por defecto para links de suscripción |
 
-### Dashboard en Netlify
+### Dashboard servido por Nginx
 | Variable | Valor |
 |----------|-------|
-| `VITE_API_URL` | `https://derma-os-api.onrender.com` |
+| `VITE_API_URL` | `https://api.<dominio>` |
 
 ---
 
@@ -132,7 +183,7 @@ PORT=4000
 | Módulo | API | UI dashboard |
 |---|---|---|
 | Auth + permisos + auditoría | ✅ | ✅ Login + AdminView |
-| MFA TOTP (RFC 6238, nativo) | ✅ setup QR + verify + reset | ✅ 3 pasos: creds → setup QR → TOTP |
+| Segundo factor por codigo de email | ✅ codigo separado de `mfaSecret`, expiracion y auditoria | ✅ credenciales → codigo de email |
 | Pacientes (lista + ficha 7 tabs) | ✅ | ✅ lectura + escritura completa |
 | Historia: evolución + recetas | ✅ CRUD completo | ✅ crear + editar + eliminar |
 | Fotos | ✅ filesystem JWT | ✅ subida + slider + lightbox |
@@ -156,7 +207,7 @@ PORT=4000
 | Profesionales | Crear usuario no crea profesional automaticamente. Para agenda/evolucion debe existir un registro en `professionals` y el usuario puede vincularse a ese profesional. |
 | Admin UI | Se removio la tabla de Bitacora de auditoria y la Matriz de permisos de la UI. Queda usuarios + Payphone por clinica. |
 | Multi-tenant | Rutas criticas validan IDs cruzados por `clinicId`: evolucion, recetas, procedimientos, paquetes y agenda. |
-| Auth runtime | `requireAuth` consulta usuario y clinica en BD en cada request; cambios de rol/desactivacion aplican aunque el JWT anterior no haya expirado. |
+| Auth runtime | `requireAuth` consulta usuario y clinica en BD en cada request. `authVersion` invalida JWT anteriores al cambiar password, MFA, rol, email, vinculacion profesional o estado. |
 | Superadmin global | Existe dashboard separado `/platform`, con login real `gerencia@undercodeec.com` + `PLATFORM_ADMIN_PASSWORD` desde `.env`, para gestionar clinicas, demos, modulos, suspension y links de suscripcion. |
 
 ### Consentimientos digitales: integridad legal y permisos (2026-07-20)
@@ -224,6 +275,108 @@ La transición controlada `firmado → revocado` solo puede añadir estado, fech
 - VPS: aplicar las migraciones `20260720000000_consent_template_workflow` y `20260720010000_immutable_signed_consents`, regenerar Prisma, reconstruir API/dashboard y reiniciar `derma-api`.
 - Antes del piloto: ejecutar prueba de alteración directa con el usuario de la API, descarga/verificación de PDF, revocación, aislamiento entre clínicas y restauración desde backup.
 
+### Auditoria integral de logica, datos y alineacion documental (2026-07-21)
+
+#### Veredicto
+
+La aplicacion compila y las pruebas unitarias existentes pasan, pero no debe considerarse lista para un piloto con pacientes y cobros reales hasta cerrar los bloqueantes siguientes. La auditoria fue de codigo activo, esquema, migraciones, API, dashboard, dependencias y contraste con este documento, `CONSENTIMIENTOS.md` y la investigacion historica de necesidades dermatologicas.
+
+#### Hallazgos prioritarios confirmados
+
+1. **Autorizacion por modulo incompleta**
+   - Varias subrutas de paciente comprueban `pacientes`, pero no `historia`, `fotos`, `procedimientos` o `paquetes` para cada lectura.
+   - Busqueda global, profesionales y catalogo de consentimientos exigen autenticacion, pero no siempre el modulo correspondiente.
+   - La matriz frontend incluye `Limitado` como escritura mientras backend lo rechaza.
+
+2. **Integridad de agenda y sesiones**
+   - Las transiciones de cita no tienen maquina de estados; una cita atendida puede pasar a cancelada y luego eliminarse, dejando una redencion sin cita.
+   - El `PATCH` permite rangos horarios invalidos y no impide solapamientos del mismo profesional.
+
+3. **Paquetes y abonos**
+   - Cambiar el servicio de un paquete ya vendido altera retroactivamente el servicio que cubren sus saldos.
+   - Los abonos manuales y Payphone no limitan el total al precio/saldo pendiente ni bloquean estados no cobrables.
+
+4. **Inventario**
+   - Los ajustes leen y luego sobrescriben stock; dos consumos concurrentes pueden perderse.
+   - Un consumo superior al disponible queda truncado a cero, pero la auditoria registra el delta completo solicitado.
+
+5. **Suscripciones de plataforma**
+   - Pagos o extensiones concurrentes pueden calcular desde la misma fecha y perder meses pagados.
+   - La suma de meses con `Date.setMonth()` produce desbordes en fechas de fin de mes.
+
+6. **Consentimientos**
+   - La firma solo valida el prefijo base64; un PNG invalido puede marcar el documento como firmado y generar PDF sin firma visible.
+   - La descarga no exige estado firmado.
+   - La cadena hash de auditoria no cubre login, registro, plataforma y webhooks porque esas rutas crean entradas directas sin hash.
+
+7. **Autenticacion**
+   - La implementacion activa usa codigo por email y borra `mfaSecret`; el MFA TOTP descrito historicamente ya no esta operativo.
+   - La confirmacion de recuperacion de contrasena no reclama atomicamente el codigo y los JWT anteriores no se revocan al cambiar password.
+
+8. **Defensa multi-tenant en base de datos**
+   - La aplicacion valida muchos IDs por `clinicId`, pero faltan restricciones compuestas/RLS que impidan relaciones cruzadas si una ruta futura omite el filtro.
+
+9. **Despliegue y configuracion**
+   - `render.yaml` y los `.env.example` no incluyen todas las variables requeridas por esquema y validacion de produccion, especialmente `DIRECT_URL` y secretos de plataforma.
+   - El dashboard conserva cliente de `/invoices`, pero el servidor no monta ese router aunque `INVOICES_ENABLED=true`.
+
+10. **Dependencias y controles automaticos**
+    - `pnpm audit --prod`: una vulnerabilidad moderada en `mammoth` y una baja en `body-parser`.
+    - `pnpm lint` falla porque ESLint no esta instalado.
+    - Las 11 pruebas existentes son unitarias; faltan pruebas HTTP/BD con dos clinicas, concurrencia, permisos, migraciones y webhooks.
+
+#### Validaciones ejecutadas durante la auditoria
+
+- Prisma schema validate: OK.
+- Typecheck API y dashboard: OK.
+- Build API y dashboard: OK; dashboard transformo 968 modulos.
+- Suite API: 11/11 pruebas aprobadas con variables de entorno de prueba.
+- `pnpm audit --prod`: 1 moderada y 1 baja.
+- Lint: no ejecutable por dependencia ESLint ausente.
+- Migraciones dinamicas: no verificadas en esta sesion; PostgreSQL local estaba activo pero no habia credenciales disponibles y Docker no inicio.
+
+#### Orden de correccion autorizado
+
+1. Cerrar autorizacion por modulo y unificar permisos frontend/backend.
+2. Implementar invariantes y concurrencia segura para agenda, paquetes, inventario y suscripciones.
+3. Validar firma binaria, estado del PDF y cadena completa de auditoria.
+4. Corregir recuperacion de password y definir MFA real sin reutilizar `mfaSecret` para mecanismos incompatibles.
+5. Agregar restricciones multi-tenant de segunda barrera mediante migracion validada sobre copia temporal.
+6. Corregir configuracion de despliegue, dependencias, lint y contradicciones documentales.
+7. Añadir pruebas de regresion HTTP/BD antes de desplegar o usar datos reales.
+
+#### Correcciones aplicadas a partir de la auditoria (2026-07-21)
+
+- **Permisos y autoria:** las lecturas clínicas de pacientes exigen su módulo real (`historia`, `procedimientos`, `paquetes`, `facturacion` y `fotos`); búsqueda y plantillas verifican módulo; `Limitado` ya no equivale a escritura en frontend; profesionales y esteticistas no pueden atribuir actividad clínica a otro profesional.
+- **Agenda:** se implementó máquina de estados, bloqueo de registros terminales, validación de rangos, rechazo de solapamientos y bloqueo transaccional por profesional. Solo una cita aún `agendada` puede eliminarse.
+- **Paquetes y cobros:** el servicio de un paquete vendido es inmutable; abonos manuales y Payphone se serializan por saldo y no pueden superar la deuda. La generación de links reserva importes pendientes antes de llamar al proveedor y deja el registro anulado si Payphone falla.
+- **Inventario:** reposiciones y consumos usan incrementos/decrementos atómicos; ya no se trunca silenciosamente un consumo sin stock.
+- **Suscripciones:** los pagos y extensiones se serializan por clínica y la suma de meses respeta correctamente el último día del mes.
+- **Consentimientos:** la firma debe ser un PNG binario con cabecera y dimensiones válidas, PDFKit debe poder decodificarlo y un documento pendiente no puede descargarse como PDF legal. La descarga usa `private, no-store`.
+- **Autenticación:** códigos de email separados de `mfaSecret`, recuperación de contraseña de un solo uso reclamada atómicamente y revocación de JWT mediante `authVersion`.
+- **Auditoría:** login, registro, plataforma y webhooks usan la misma cadena hash serializada por clínica; no quedan escrituras directas a `audit_logs` fuera del helper encadenado.
+- **Base de datos:** migraciones `20260721000000_harden_auth_sessions` y `20260721010000_tenant_integrity_barrier`; esta última detiene el despliegue si encuentra cruces históricos y crea claves foráneas compuestas para agenda, paquetes, saldos y pagos.
+- **Despliegue:** `/invoices` se monta cuando `INVOICES_ENABLED=true`; ejemplos y `render.yaml` incluyen `DIRECT_URL`, secretos de plataforma, SMTP y almacenamiento de fotos. Producción rechaza SMTP incompleto.
+- **Calidad y dependencias:** `mammoth` actualizado, `body-parser` forzado a versión corregida, ESLint 9 con configuración plana y lint funcional.
+
+#### Validacion posterior a las correcciones
+
+- Prisma validate y generación de cliente: OK.
+- Migraciones desde base PostgreSQL 16 vacía: 14/14 aplicadas; `prisma migrate status`: al día.
+- Diferencia BD → Prisma: migración vacía, sin deriva.
+- Prueba negativa multi-tenant: PostgreSQL rechazó `appointments.patient_id` de otra clínica mediante `appointments_patient_same_clinic_fkey`.
+- Suite API: 14/14 pruebas aprobadas.
+- Typecheck y build API: OK.
+- Typecheck, lint y build dashboard: OK; 973 módulos transformados.
+- `pnpm audit --prod`: sin vulnerabilidades conocidas.
+
+#### Pendientes que no deben ocultarse
+
+1. Agregar pruebas HTTP/BD automatizadas con dos clínicas, concurrencia real de webhooks/abonos/agenda y autorización por rol; en esta sesión se validaron migraciones y una barrera multi-tenant directamente en PostgreSQL, pero la suite permanente sigue siendo principalmente unitaria.
+2. Extender la segunda barrera multi-tenant a relaciones indirectas sin `clinic_id` (`clinical_records`, `procedures`, `photos`, `consents` y eventos) mediante columnas de clínica o triggers validados.
+3. Decidir producto de MFA: el flujo activo y documentado es segundo factor por email. El TOTP histórico de junio no está conectado a las rutas/UI actuales y no debe anunciarse como disponible hasta reimplementarlo y probarlo.
+4. Dividir el bundle del dashboard; el build es correcto, pero el chunk principal minificado sigue alrededor de 933 kB.
+
 ### Siguientes pasos de desarrollo - Fichas clinicas imprimibles en PDF
 
 Objetivo: crear una logica para generar fichas clinicas del paciente y permitir imprimirlas/exportarlas en PDF. El diseno final del PDF queda pendiente de definicion.
@@ -281,19 +434,22 @@ Flujo propuesto:
 ### Pendientes
 | Item | Prioridad |
 |------|-----------|
-| Aplicar migraciones `20260720000000_consent_template_workflow` y `20260720010000_immutable_signed_consents` en VPS, probar triggers con la cuenta de la API y verificar descarga/revocación | Alta — el código está listo, pero la evidencia inmutable no existe en producción hasta aplicar ambas migraciones |
-| Aplicar migración `20260718000000_harden_payment_and_redemption_integrity` en Supabase/Render después de revisar duplicados preexistentes | Alta — agrega unicidad de abonos/redenciones, secuencia de facturas e IDs Payphone |
-| Configurar y validar SMTP en Render | Alta - el registro ya exige verificacion por email automaticamente en `NODE_ENV=production`; falta prueba con proveedor real |
+| Revisar diff, excluir archivos ajenos y crear el primer commit de las correcciones del 2026-07-21 | Alta — todo sigue local, sin push ni despliegue |
+| Respaldar la base destino y aplicar las 14 migraciones con `prisma migrate deploy` en VPS | Alta — incluye sesiones, consentimientos y barrera multi-tenant; no usar `db push/reset/seed` |
+| Probar migraciones, triggers, descarga/revocacion y acceso con la cuenta real de la API | Alta — la validacion en PostgreSQL temporal fue correcta, falta evidencia en el entorno destino |
+| Configurar y validar SMTP en VPS | Alta — registro, segundo factor por email y recuperacion dependen del proveedor real en `NODE_ENV=production` |
 | Agregar MFA al login del superadmin `/platform/login` | Alta - tiene password, JWT separado y rate limit, pero aun no segundo factor |
-| Definir flujo usuario/profesional | Media - estado actual correcto: usuario y profesional son entidades separadas; si se desea, agregar checkbox/boton "crear profesional asociado" al crear usuario clinico |
 | Solicitar a Payphone activación de Notificación Externa para el webhook `/payments/payphone/NotificacionPago` | Alta — requerida para conciliación automática real |
-| Validación operativa con credenciales Payphone reales por clínica antes de `git push` | Alta — evita volver a links simulados |
+| Validación operativa con credenciales Payphone reales por clínica antes del piloto | Alta — comprobar links, reserva de saldo, webhook idempotente y conciliacion manual |
 | Evaluar Token de terceros / comercio aliado Payphone cuando el SaaS tenga varias clínicas | Media — reduce fricción de onboarding |
-| Configurar `PLATFORM_PAYPHONE_TOKEN` y `PLATFORM_PAYPHONE_STORE_ID` en Render | Alta — requerido para links de suscripción DERMA-OS |
+| Configurar `PLATFORM_PAYPHONE_TOKEN` y `PLATFORM_PAYPHONE_STORE_ID` en VPS | Alta — requerido para links de suscripción DERMA-OS |
 | Solicitar a Payphone Notificación Externa para `/platform/payphone/NotificacionPago` | Alta — requerido para extender suscripciones automáticamente |
 | Validar dashboard interno `/platform` con `PLATFORM_REGISTER_KEY` antes de ventas piloto | Alta — controla demos y accesos |
-| Validar migraciones en producción Render antes del piloto | Alta — Prisma Client local regenerado; la migracion del 2026-07-18 aun no fue aplicada a produccion |
-| Ejecutar audit de dependencias con `npm audit`/`pnpm audit` en ambiente con gestor disponible | Media — el runtime local de Codex solo expuso `node.exe` |
+| Automatizar pruebas HTTP/BD con dos clinicas y concurrencia de agenda, abonos y webhooks | Alta — las pruebas actuales pasan, pero siguen siendo principalmente unitarias |
+| Extender barreras multi-tenant a relaciones indirectas sin `clinic_id` | Media — pendiente para historia, procedimientos, fotos, consentimientos y eventos |
+| Definir si el segundo factor clinico seguira por email o si se reimplementara TOTP | Media — TOTP pertenece al flujo historico y no esta conectado a la UI/rutas actuales |
+| Definir flujo usuario/profesional | Media - hoy son entidades separadas; opcionalmente agregar "crear profesional asociado" al crear usuario clinico |
+| Dividir el bundle principal del dashboard | Media — build correcto, chunk principal aproximado de 933 kB |
 | Sitio comercial `apps/site` | Baja — diseño antes que código |
 | Firma `.p12` + webservice SRI real | Baja — fuera de alcance demo |
 
@@ -757,7 +913,7 @@ RESTART IDENTITY CASCADE;
 
 ---
 
-## ⚠️ Limitaciones del Plan Gratuito
+## ⚠️ Limitaciones del despliegue gratuito anterior (historico)
 
 | Plataforma | Limitación |
 |-----------|-----------|
@@ -768,6 +924,8 @@ RESTART IDENTITY CASCADE;
 
 > 💡 **Tip**: Usa [UptimeRobot](https://uptimerobot.com) (gratis) para hacer ping a
 > `https://derma-os-api.onrender.com/health` cada 14 min y evitar el cold start.
+
+Esta seccion se conserva como referencia del despliegue Render/Netlify anterior; no describe la VPS objetivo vigente.
 
 ---
 
@@ -789,6 +947,8 @@ RESTART IDENTITY CASCADE;
 - ✅ Paso 1: dominio/DNS y acceso inicial a la VPS.
 - ✅ Paso 2: actualización del servidor, usuario de despliegue, firewall y herramientas base.
 - ✅ Paso 3: instalación/configuración inicial de Node, pnpm y PostgreSQL.
+- ✅ Código local auditado: Prisma, migraciones temporales, API, dashboard, lint y dependencias validados el 2026-07-21.
+- ⚠️ Las correcciones auditadas siguen sin commit/push y todavía no se aplicaron en la VPS ni en una base real.
 - ⏳ Paso 4 en adelante: pendiente.
 
 ### Pasos pendientes para continuar

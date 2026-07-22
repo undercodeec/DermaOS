@@ -154,7 +154,6 @@ const WRITE_PERMS = new Set([
   "Subir/ver",
   "Gestionar",
   "Gestionar firma",
-  "Limitado",
 ]);
 
 export function roleCanWrite(role: Role, moduleId: ModuleId): boolean {

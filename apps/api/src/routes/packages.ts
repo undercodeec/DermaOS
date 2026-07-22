@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { requireAuth, requireModule } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
-import { notFound } from "../lib/errors.js";
+import { conflict, notFound } from "../lib/errors.js";
 
 const router = Router();
 router.use(requireAuth, requireModule("paquetes"));
@@ -86,22 +87,34 @@ router.patch("/:id", requireModule("paquetes", "write"), async (req, res, next) 
     });
     if (!cur) throw notFound("Paquete no encontrado");
     const b = editPackageSchema.parse(req.body);
-    if (b.serviceId && b.serviceId !== cur.serviceId) {
+    const changesService = Boolean(b.serviceId && b.serviceId !== cur.serviceId);
+    if (changesService) {
       const svc = await prisma.service.findFirst({ where: { id: b.serviceId, clinicId: req.user!.clinicId } });
       if (!svc) throw notFound("Servicio no encontrado");
     }
-    const pk = await prisma.package.update({
-      where: { id: cur.id },
-      data: {
-        name: b.name ?? cur.name,
-        serviceId: b.serviceId ?? cur.serviceId,
-        sessions: b.sessions ?? cur.sessions,
-        price: b.price ?? cur.price,
-        intervalDays: b.intervalDays ?? cur.intervalDays,
-        validityDays: b.validityDays ?? cur.validityDays,
-        active: b.active ?? cur.active,
-      },
-      include: { service: { select: { id: true, name: true, price: true } } },
+    const pk = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`package:${cur.id}`}))`,
+      );
+      if (changesService) {
+        const sold = await tx.packageBalance.count({ where: { packageId: cur.id } });
+        if (sold > 0) {
+          throw conflict("No se puede cambiar el servicio de un paquete que ya fue vendido; crea uno nuevo");
+        }
+      }
+      return tx.package.update({
+        where: { id: cur.id },
+        data: {
+          name: b.name ?? cur.name,
+          serviceId: b.serviceId ?? cur.serviceId,
+          sessions: b.sessions ?? cur.sessions,
+          price: b.price ?? cur.price,
+          intervalDays: b.intervalDays ?? cur.intervalDays,
+          validityDays: b.validityDays ?? cur.validityDays,
+          active: b.active ?? cur.active,
+        },
+        include: { service: { select: { id: true, name: true, price: true } } },
+      });
     });
     await audit(req, "Actualizó paquete", "paquetes", pk.name);
     res.json(pk);

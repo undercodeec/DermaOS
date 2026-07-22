@@ -71,6 +71,13 @@ const schema = z.object({
   if (!value.PAYPHONE_CREDENTIAL_KEY) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["PAYPHONE_CREDENTIAL_KEY"], message: "es obligatoria en produccion" });
   }
+  if (!value.SMTP_HOST || !value.SMTP_USER || !value.SMTP_PASS || !value.SMTP_FROM) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["SMTP_HOST"],
+      message: "SMTP_HOST, SMTP_USER, SMTP_PASS y SMTP_FROM son obligatorias en produccion",
+    });
+  }
   if (value.PHOTO_STORAGE_PROVIDER === "supabase" && (!value.SUPABASE_URL || !value.SUPABASE_SERVICE_ROLE_KEY)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["SUPABASE_URL"], message: "SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY son obligatorias para fotos en Supabase" });
   }

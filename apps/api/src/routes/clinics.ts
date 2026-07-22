@@ -7,6 +7,7 @@ import { env } from "../env.js";
 import { signToken } from "../lib/jwt.js";
 import { badRequest, conflict, unauthorized } from "../lib/errors.js";
 import { ALL_MODULES, addDays } from "../lib/entitlements.js";
+import { appendAuditLog } from "../lib/audit.js";
 import { ipAndEmailKey, rateLimit } from "../middleware/rateLimit.js";
 import {
   generateLoginEmailCode,
@@ -35,18 +36,11 @@ const verifyEmailSchema = z.object({
 
 type UserRow = NonNullable<Awaited<ReturnType<typeof prisma.user.findUnique>>>;
 
-function encodeRegistrationCodeState(userId: string, code: string, expiresAt: Date) {
-  return JSON.stringify({
-    kind: REGISTRATION_CODE_KIND,
-    hash: hashLoginEmailCode(userId, code),
-    expiresAt: expiresAt.toISOString(),
-  });
-}
-
-function readRegistrationCodeState(raw: string | null) {
-  if (!raw) return null;
+function readRegistrationCodeState(hash: string | null, expiresAt: Date | null, legacyRaw: string | null) {
+  if (hash && expiresAt) return { hash, expiresAt };
+  if (!legacyRaw) return null;
   try {
-    const parsed = JSON.parse(raw) as { kind?: string; hash?: string; expiresAt?: string };
+    const parsed = JSON.parse(legacyRaw) as { kind?: string; hash?: string; expiresAt?: string };
     if (parsed.kind !== REGISTRATION_CODE_KIND || !parsed.hash || !parsed.expiresAt) return null;
     const expiresAt = new Date(parsed.expiresAt);
     if (Number.isNaN(expiresAt.getTime())) return null;
@@ -68,9 +62,12 @@ function normalizeEmail(email: string) {
 }
 
 function serializeUser(u: UserRow) {
-  const { passwordHash, mfaSecret, ...rest } = u;
+  const { passwordHash, mfaSecret, emailCodeHash, emailCodeExpiresAt, authVersion, ...rest } = u;
   void passwordHash;
   void mfaSecret;
+  void emailCodeHash;
+  void emailCodeExpiresAt;
+  void authVersion;
   return rest;
 }
 
@@ -100,7 +97,8 @@ router.post("/register", registerLimit, async (req, res, next) => {
           passwordHash,
           role: "admin",
           mfaEnabled: false,
-          mfaSecret: encodeRegistrationCodeState(userId, code, expiresAt),
+          emailCodeHash: hashLoginEmailCode(userId, code),
+          emailCodeExpiresAt: expiresAt,
           active: false,
         },
       });
@@ -114,15 +112,13 @@ router.post("/register", registerLimit, async (req, res, next) => {
           allowedModules: [],
         },
       });
-      await tx.auditLog.create({
-        data: {
-          clinicId: clinic.id,
-          userId: user.id,
-          action: "clinic.register",
-          cat: "sistema",
-          label: "Pendiente de verificacion por email",
-          ip: req.ip ?? null,
-        },
+      await appendAuditLog(tx, {
+        clinicId: clinic.id,
+        userId: user.id,
+        action: "clinic.register",
+        cat: "sistema",
+        label: "Pendiente de verificacion por email",
+        ip: req.ip ?? null,
       });
       return { clinic, user };
     });
@@ -144,7 +140,7 @@ router.post("/verify-email", verifyLimit, async (req, res, next) => {
     if (!user) throw unauthorized("Codigo de verificacion invalido");
     if (user.active) throw badRequest("La cuenta ya fue verificada");
 
-    const codeState = readRegistrationCodeState(user.mfaSecret);
+    const codeState = readRegistrationCodeState(user.emailCodeHash, user.emailCodeExpiresAt, user.mfaSecret);
     if (!codeState) throw badRequest("Solicite un nuevo registro");
     if (codeState.expiresAt.getTime() < Date.now()) {
       throw unauthorized("El codigo de verificacion expiro");
@@ -155,14 +151,23 @@ router.post("/verify-email", verifyLimit, async (req, res, next) => {
 
     const now = new Date();
     const verifiedUser = await prisma.$transaction(async (tx) => {
-      const updatedUser = await tx.user.update({
-        where: { id: user.id },
+      const claimed = await tx.user.updateMany({
+        where: {
+          id: user.id,
+          active: false,
+          ...(user.emailCodeHash
+            ? { emailCodeHash: user.emailCodeHash, emailCodeExpiresAt: { gt: now } }
+            : {}),
+        },
         data: {
           active: true,
-          mfaSecret: null,
+          emailCodeHash: null,
+          emailCodeExpiresAt: null,
+          ...(readRegistrationCodeState(null, null, user.mfaSecret) ? { mfaSecret: null } : {}),
           lastAccess: now,
         },
       });
+      if (claimed.count !== 1) throw badRequest("La cuenta ya fue verificada o el codigo expiro");
       await tx.clinicSubscription.update({
         where: { clinicId: user.clinicId },
         data: {
@@ -173,17 +178,15 @@ router.post("/verify-email", verifyLimit, async (req, res, next) => {
           allowedModules: ALL_MODULES,
         },
       });
-      await tx.auditLog.create({
-        data: {
-          clinicId: user.clinicId,
-          userId: user.id,
-          action: "Email verificado y demo activada",
-          cat: "sistema",
-          label: `${TRIAL_DAYS} dias`,
-          ip: req.ip ?? null,
-        },
+      await appendAuditLog(tx, {
+        clinicId: user.clinicId,
+        userId: user.id,
+        action: "Email verificado y demo activada",
+        cat: "sistema",
+        label: `${TRIAL_DAYS} dias`,
+        ip: req.ip ?? null,
       });
-      return updatedUser;
+      return tx.user.findUniqueOrThrow({ where: { id: user.id } });
     });
 
     const token = signToken({
@@ -191,6 +194,7 @@ router.post("/verify-email", verifyLimit, async (req, res, next) => {
       email: verifiedUser.email,
       role: verifiedUser.role,
       clinicId: verifiedUser.clinicId,
+      authVersion: verifiedUser.authVersion,
     });
 
     res.json({

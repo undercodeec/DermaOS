@@ -24,6 +24,7 @@ export function InventoryView() {
 
   const [openNew, setOpenNew] = useState(false);
   const [edit, setEdit] = useState<InventoryItem | null>(null);
+  const [viewOpenedAt] = useState(() => Date.now());
   // per-row custom delta: Map itemId → string input value
   const [deltas, setDeltas] = useState<Record<string, string>>({});
 
@@ -106,7 +107,7 @@ export function InventoryView() {
                 const isLow = stock <= min;
                 const pct = min > 0 ? Math.min(100, (stock / (min * 3)) * 100) : 100;
                 const expSoon =
-                  i.expiryDate && new Date(i.expiryDate).getTime() - Date.now() < 180 * 864e5;
+                  i.expiryDate && new Date(i.expiryDate).getTime() - viewOpenedAt < 180 * 864e5;
                 const d = deltas[i.id] ?? "1";
                 return (
                   <tr key={i.id}>

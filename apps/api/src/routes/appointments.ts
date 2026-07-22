@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { requireAuth, requireModule } from "../middleware/auth.js";
 import { audit } from "../lib/audit.js";
@@ -18,6 +18,16 @@ const APPT_STATUSES = [
   "no_show",
   "cancelada",
 ] as const;
+
+const TERMINAL_STATUSES = new Set(["atendida", "no_show", "cancelada"]);
+const ALLOWED_STATUS_TRANSITIONS: Record<(typeof APPT_STATUSES)[number], ReadonlySet<(typeof APPT_STATUSES)[number]>> = {
+  agendada: new Set(["confirmada", "en_sala", "atendida", "no_show", "cancelada"]),
+  confirmada: new Set(["en_sala", "atendida", "no_show", "cancelada"]),
+  en_sala: new Set(["atendida", "cancelada"]),
+  atendida: new Set(),
+  no_show: new Set(),
+  cancelada: new Set(),
+};
 
 function scopedProfessionalId(req: Express.Request) {
   if (req.user!.role !== "profesional" && req.user!.role !== "esteticista") return null;
@@ -46,6 +56,27 @@ async function refreshNextAppointment(tx: Prisma.TransactionClient, patientId: s
     where: { id: patientId },
     data: { nextAppointment: next?.startAt ?? null },
   });
+}
+
+async function ensureNoProfessionalOverlap(
+  tx: Prisma.TransactionClient,
+  input: { clinicId: string; professionalId: string; startAt: Date; endAt: Date; excludeId?: string },
+) {
+  await tx.$queryRaw(
+    Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`appointment:${input.professionalId}`}))`,
+  );
+  const overlap = await tx.appointment.findFirst({
+    where: {
+      clinicId: input.clinicId,
+      professionalId: input.professionalId,
+      status: { notIn: ["cancelada", "no_show"] },
+      startAt: { lt: input.endAt },
+      endAt: { gt: input.startAt },
+      ...(input.excludeId ? { id: { not: input.excludeId } } : {}),
+    },
+    select: { id: true },
+  });
+  if (overlap) throw badRequest("El profesional ya tiene una cita en ese horario");
 }
 
 function serialize(a: Awaited<ReturnType<typeof prisma.appointment.findFirstOrThrow>> & {
@@ -141,6 +172,12 @@ router.post("/", requireModule("agenda", "write"), async (req, res, next) => {
     if (end <= start) throw badRequest("Hora de fin inválida");
 
     const created = await prisma.$transaction(async (tx) => {
+      await ensureNoProfessionalOverlap(tx, {
+        clinicId: req.user!.clinicId,
+        professionalId: b.professionalId,
+        startAt: start,
+        endAt: end,
+      });
       const item = await tx.appointment.create({
         data: {
           clinicId: req.user!.clinicId,
@@ -245,6 +282,12 @@ router.patch("/:id", requireModule("agenda", "write"), async (req, res, next) =>
     });
     if (!cur) throw notFound("Cita no encontrada");
     const b = patchSchema.parse(req.body);
+    if (TERMINAL_STATUSES.has(cur.status)) {
+      throw badRequest(`Una cita ${cur.status} es historica y no se modifica; registra una correccion separada`);
+    }
+    if (b.status && b.status !== cur.status && !ALLOWED_STATUS_TRANSITIONS[cur.status].has(b.status)) {
+      throw badRequest(`Transicion de cita no permitida: ${cur.status} → ${b.status}`);
+    }
 
     const data: Record<string, unknown> = {};
     if (b.status) data.status = b.status;
@@ -256,6 +299,9 @@ router.patch("/:id", requireModule("agenda", "write"), async (req, res, next) =>
     }
     if (b.startAt) data.startAt = new Date(b.startAt);
     if (b.endAt) data.endAt = new Date(b.endAt);
+    const resultingStart = b.startAt ? new Date(b.startAt) : cur.startAt;
+    const resultingEnd = b.endAt ? new Date(b.endAt) : cur.endAt;
+    if (resultingEnd <= resultingStart) throw badRequest("Hora de fin inválida");
 
     let updated: Awaited<ReturnType<typeof prisma.appointment.findFirstOrThrow>> & {
       patient: { firstName: string; lastName: string; idNumber: string };
@@ -265,6 +311,16 @@ router.patch("/:id", requireModule("agenda", "write"), async (req, res, next) =>
     for (let attempt = 0; ; attempt += 1) {
       try {
         updated = await prisma.$transaction(async (tx) => {
+          const resultingStatus = b.status ?? cur.status;
+          if (resultingStatus !== "cancelada" && resultingStatus !== "no_show") {
+            await ensureNoProfessionalOverlap(tx, {
+              clinicId: req.user!.clinicId,
+              professionalId: b.professionalId ?? cur.professionalId,
+              startAt: resultingStart,
+              endAt: resultingEnd,
+              excludeId: cur.id,
+            });
+          }
           const item = await tx.appointment.update({
             where: { id: cur.id },
             data,
@@ -320,7 +376,9 @@ router.delete("/:id", requireModule("agenda", "write"), async (req, res, next) =
       include: { patient: { select: { firstName: true, lastName: true } } },
     });
     if (!cur) throw notFound("Cita no encontrada");
-    if (cur.status === "atendida") throw badRequest("Una cita atendida no se elimina; usa una correccion auditada");
+    if (cur.status !== "agendada") {
+      throw badRequest("Solo se elimina una cita aun no procesada; para conservar trazabilidad usa cancelacion o no-show");
+    }
     await prisma.$transaction(async (tx) => {
       await tx.appointment.delete({ where: { id: cur.id } });
       await refreshNextAppointment(tx, cur.patientId);
