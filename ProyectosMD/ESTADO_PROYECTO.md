@@ -1,5 +1,5 @@
 # 📋 ESTADO DEL PROYECTO — DERMA-OS
-> Ultima actualizacion: 2026-07-22 (correccion postdespliegue de aislamiento entre clinicas y gestion de fotos)
+> Ultima actualizacion: 2026-07-22 (despliegue validado, SMTP operativo y regresion automatizada en CI)
 
 ---
 
@@ -14,7 +14,15 @@
 - Los administradores ahora tienen acciones visibles `Reemplazar` y `Eliminar` en cada fotografia. El reemplazo valida JPEG/PNG/WebP, guarda primero el archivo nuevo, actualiza la referencia y retira el anterior; ambas operaciones conservan permisos y auditoria.
 - Las respuestas de carga/listado/reemplazo de fotos ya no exponen `storagePath` al navegador.
 - La suite HTTP/BD crea dos clinicas y comprueba pacientes, conteos, historia, recetas, fotos, consentimientos, procedimientos, paquetes y usuarios. Tambien valida reemplazo/eliminacion y rechazo cruzado de binarios.
-- Estado de esta correccion: publicada en `main` mediante `a0779fc fix: aislar sesiones y gestionar fotos clinicas`; queda pendiente desplegarla y repetir la prueba manual en VPS. No requiere una migracion Prisma adicional.
+- Estado de esta correccion: publicada mediante `a0779fc`, desplegada y aprobada manualmente en VPS. No requiere una migracion Prisma adicional.
+
+### Validacion operativa y automatizacion posterior
+
+- El propietario confirmo en VPS el despliegue, las 15 migraciones, la separacion entre clinicas, usuarios/roles, fotografias, reemplazo y eliminacion.
+- SMTP real, registro de clinicas y recuperacion de cuentas fueron verificados correctamente.
+- Payphone real y la politica/prueba de respaldos se difieren explicitamente hasta la etapa final previa al piloto.
+- Se agrego `.github/workflows/ci.yml`: PostgreSQL 16 efimero, migraciones, typecheck, lint, 20 pruebas unitarias, suite HTTP/BD multi-clinica y build de produccion.
+- Se agrego `scripts/verify-vps.sh` para comprobar repositorio limpio, commit activo, migraciones, servicio systemd, `/health`, headers de seguridad, CORS y URLs publicas opcionales.
 
 ### Ficha clinica consolidada e imprimible
 
@@ -66,11 +74,11 @@
 
 ### Punto exacto de reanudacion
 
-1. En VPS obtener `a0779fc` con `git pull --ff-only`, reconstruir API/dashboard y reiniciar `derma-api`; no hay una migracion nueva para esta correccion.
-2. Confirmar que API y dashboard sirven el commit publicado y que `/health` responde correctamente.
-3. Repetir en ventana privada el cambio entre dos clinicas, usuarios/roles, fotos, reemplazo y eliminacion.
-4. Configurar SMTP real en VPS y probar entrega de registro, login clinico, recuperacion y MFA de superadmin.
-5. Validar Payphone con credenciales/notificaciones externas reales y decidir el diseño PDF definitivo/historico.
+1. Revisar y publicar el workflow CI y el verificador VPS agregados en esta sesion.
+2. Ejecutar el workflow en GitHub y corregir cualquier diferencia exclusiva del runner si aparece.
+3. Validar MFA de `/platform` con el SMTP ya operativo y revisar el dashboard interno antes del piloto.
+4. Definir el diseño PDF definitivo/historico y el flujo opcional usuario/profesional.
+5. Mantener Payphone real y respaldos/restauracion como tareas finales expresamente diferidas.
 
 El desarrollo base fue publicado mediante `8280dc1 feat: consolidar ficha clinica y seguridad multi-tenant`; la correccion posterior de aislamiento y fotos corresponde a `a0779fc fix: aislar sesiones y gestionar fotos clinicas`. `AGENTS.md` sigue sin seguimiento y no forma parte del desarrollo funcional.
 
@@ -137,10 +145,10 @@ No usar en una base con datos reales `prisma db push`, `db:reset`, `db:clean` ni
 
 | Componente | Destino vigente | Estado |
 |-----------|-----------------|--------|
-| **Dashboard** | Nginx en VPS, `app.<dominio>` | Pendiente desde paso 6 |
-| **API** | Node/systemd en VPS, `api.<dominio>` | Pendiente desde paso 4 |
-| **Base de datos** | PostgreSQL en la misma VPS, puerto no publico | Instalacion inicial completada; esquema pendiente |
-| **Fotos** | Directorio persistente local; Supabase Storage privado despues | Pendiente de configurar/probar |
+| **Dashboard** | Nginx en VPS, `app.<dominio>` | Desplegado y probado |
+| **API** | Node/systemd en VPS, `api.<dominio>` | Desplegada y probada |
+| **Base de datos** | PostgreSQL en la misma VPS, puerto no publico | 15 migraciones aplicadas y operativas |
+| **Fotos** | Directorio persistente local; Supabase Storage privado despues | Local probado; Supabase opcional posterior |
 
 Render, Netlify y PostgreSQL de Supabase corresponden al despliegue anterior y no son la arquitectura objetivo vigente.
 
@@ -507,24 +515,16 @@ Flujo propuesto:
 ### Pendientes
 | Item | Prioridad |
 |------|-----------|
-| Desplegar la corrección de caché multi-clínica y gestión de fotos en VPS | Alta — commit funcional `a0779fc` publicado; faltan pull, build, reinicio y prueba manual |
-| Confirmar `prisma migrate status` en VPS | Alta — las 15 migraciones previas deben figurar aplicadas; esta corrección no agrega migración |
-| Probar migraciones, triggers, descarga/revocacion y acceso con la cuenta real de la API | Alta — la validacion en PostgreSQL temporal fue correcta, falta evidencia en el entorno destino |
-| Configurar y validar SMTP en VPS | Alta — registro, segundo factor por email y recuperacion dependen del proveedor real en `NODE_ENV=production` |
-| Validar MFA de `/platform` con SMTP real en VPS | Alta — flujo de challenge/codigo ya implementado; falta entrega real del correo |
-| Solicitar a Payphone activación de Notificación Externa para el webhook `/payments/payphone/NotificacionPago` | Alta — requerida para conciliación automática real |
-| Validación operativa con credenciales Payphone reales por clínica antes del piloto | Alta — comprobar links, reserva de saldo, webhook idempotente y conciliacion manual |
-| Evaluar Token de terceros / comercio aliado Payphone cuando el SaaS tenga varias clínicas | Media — reduce fricción de onboarding |
-| Configurar `PLATFORM_PAYPHONE_TOKEN` y `PLATFORM_PAYPHONE_STORE_ID` en VPS | Alta — requerido para links de suscripción DERMA-OS |
-| Solicitar a Payphone Notificación Externa para `/platform/payphone/NotificacionPago` | Alta — requerido para extender suscripciones automáticamente |
+| Validar MFA de `/platform` con SMTP real en VPS | Alta — SMTP, registro y recuperación ya funcionan; falta confirmar el challenge del superadmin |
 | Validar dashboard interno `/platform` con `PLATFORM_REGISTER_KEY` antes de ventas piloto | Alta — controla demos y accesos |
-| Incorporar `test:integration` a CI con PostgreSQL efimero | Media — suite local implementada y validada; falta automatizacion del runner CI |
-| Validar la barrera multi-tenant indirecta al desplegar | Alta — migracion y pruebas locales completas; falta copia/backup del entorno destino |
+| Activar y observar el primer workflow CI en GitHub | Alta — workflow con PostgreSQL efímero implementado localmente; falta publicarlo y confirmar el runner |
 | Definir si el segundo factor clinico seguira por email o si se reimplementara TOTP | Media — TOTP pertenece al flujo historico y no esta conectado a la UI/rutas actuales |
 | Definir flujo usuario/profesional | Media - hoy son entidades separadas; opcionalmente agregar "crear profesional asociado" al crear usuario clinico |
 | Vigilar y dividir el bundle principal del dashboard si vuelve a crecer | Baja — build actual: 449.69 kB minificado / 127.17 kB gzip |
 | Sitio comercial `apps/site` | Baja — diseño antes que código |
 | Firma `.p12` + webservice SRI real | Baja — fuera de alcance demo |
+| Payphone real por clínica y para suscripciones | Final — activación externa, credenciales, webhooks y conciliación quedan diferidos por decisión del propietario |
+| Respaldos automáticos y prueba de restauración | Final — PostgreSQL y `uploads` quedan diferidos por decisión del propietario |
 
 ---
 
@@ -1020,21 +1020,22 @@ Esta seccion se conserva como referencia del despliegue Render/Netlify anterior;
 - ✅ Paso 1: dominio/DNS y acceso inicial a la VPS.
 - ✅ Paso 2: actualización del servidor, usuario de despliegue, firewall y herramientas base.
 - ✅ Paso 3: instalación/configuración inicial de Node, pnpm y PostgreSQL.
-- ✅ Código local auditado: Prisma, migraciones temporales, API, dashboard, lint y dependencias validados el 2026-07-21.
-- Las correcciones auditadas están publicadas en `origin/main`, pero todavía no se aplicaron en la VPS ni en una base real.
-- ⏳ Paso 4 en adelante: pendiente.
+- ✅ Código auditado: Prisma, 15 migraciones, API, dashboard, lint y dependencias validados.
+- ✅ Pasos 4 a 9: API, base, dashboard, systemd, Nginx y HTTPS desplegados en VPS.
+- ✅ SMTP real, registro, recuperación de cuenta y aislamiento entre clínicas comprobados manualmente.
+- ⏳ Pendientes finales por decisión del propietario: Payphone real y respaldos/restauración.
 
-### Pasos pendientes para continuar
+### Configuración aplicada y referencia operativa
 
 #### 4. Configurar la API
 
-Crear `/opt/derma-os/apps/api/.env` con producción, PostgreSQL local de la VPS, secretos fuertes, `CORS_ORIGIN` del dashboard, `UPLOAD_DIR` persistente y `INVOICES_ENABLED=false` mientras facturación no esté lista.
+Mantener `/opt/derma-os/DermaOS/apps/api/.env` con producción, PostgreSQL local de la VPS, secretos fuertes, `CORS_ORIGIN` del dashboard, `UPLOAD_DIR` persistente y `INVOICES_ENABLED=false` mientras facturación no esté lista.
 
 Crear el directorio persistente de fotos:
 
 ```bash
-mkdir -p /opt/derma-os/apps/api/uploads
-chmod 700 /opt/derma-os/apps/api/uploads
+mkdir -p /opt/derma-os/DermaOS/apps/api/uploads
+chmod 700 /opt/derma-os/DermaOS/apps/api/uploads
 ```
 
 #### 5. Aplicar esquema y construir
@@ -1078,9 +1079,9 @@ After=network.target postgresql.service
 [Service]
 Type=simple
 User=derma
-WorkingDirectory=/opt/derma-os/apps/api
-EnvironmentFile=/opt/derma-os/apps/api/.env
-ExecStart=/usr/bin/node /opt/derma-os/apps/api/dist/src/server.js
+WorkingDirectory=/opt/derma-os/DermaOS/apps/api
+EnvironmentFile=/opt/derma-os/DermaOS/apps/api/.env
+ExecStart=/usr/bin/node /opt/derma-os/DermaOS/apps/api/dist/src/server.js
 Restart=always
 RestartSec=5
 
@@ -1099,7 +1100,7 @@ curl http://127.0.0.1:4000/health
 
 #### 8. Configurar Nginx
 
-- Dashboard: servir `/opt/derma-os/apps/dashboard/dist` en `app.<dominio>`.
+- Dashboard: servir `/opt/derma-os/DermaOS/apps/dashboard/dist` en `app.<dominio>`.
 - API: hacer proxy de `api.<dominio>` hacia `http://127.0.0.1:4000`.
 - Verificar con `nginx -t` y recargar Nginx.
 
@@ -1111,6 +1112,18 @@ Usar Certbot para emitir certificados para ambos subdominios:
 sudo certbot --nginx -d app.<dominio> -d api.<dominio>
 sudo certbot renew --dry-run
 ```
+
+Despues de cada despliegue ejecutar como usuario `derma`:
+
+```bash
+cd /opt/derma-os/DermaOS
+DERMA_PUBLIC_API_URL="https://api.<dominio>" \
+DERMA_DASHBOARD_URL="https://app.<dominio>" \
+DERMA_APP_ORIGIN="https://app.<dominio>" \
+bash scripts/verify-vps.sh
+```
+
+El script no modifica datos ni servicios; falla si detecta cambios rastreados, migraciones pendientes, API inactiva, `/health` incorrecto, headers ausentes o CORS mal configurado.
 
 #### 10. Probar Supabase Storage
 
