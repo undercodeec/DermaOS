@@ -394,7 +394,11 @@ router.get("/:id/recetas", requireModule("historia"), async (req, res, next) => 
   try {
     const list = await prisma.clinicalRecord.findMany({
       where: { patientId: req.params.id, clinicId: req.user!.clinicId, type: "receta" },
-      include: { professional: { select: { id: true, name: true } } },
+      include: {
+        professional: {
+          select: { id: true, name: true, specialty: true, registrationNo: true },
+        },
+      },
       orderBy: { date: "desc" },
     });
     res.json(list);
@@ -407,11 +411,16 @@ const rxItemSchema = z.object({
   ingredients: z.array(z.object({ name: z.string().min(1), concentration: z.string().default("") })).min(1),
   vehicle: z.string().default(""),
   quantity: z.string().default(""),
+  dosage: z.string().trim().max(200).default(""),
+  frequency: z.string().trim().max(200).default(""),
+  duration: z.string().trim().max(200).default(""),
   instructions: z.string().min(1),
 });
 const newRecetaSchema = z.object({
   professionalId: z.string().uuid(),
   templateId: z.string().optional(),
+  diagnosis: z.string().trim().max(500).default(""),
+  warnings: z.string().trim().max(1_000).default(""),
   items: z.array(rxItemSchema).min(1),
 });
 router.post("/:id/recetas", requireModule("historia", "write"), async (req, res, next) => {
@@ -427,13 +436,22 @@ router.post("/:id/recetas", requireModule("historia", "write"), async (req, res,
       data: {
         clinicId: req.user!.clinicId,
         patientId: pat.id,
-        professionalId: body.professionalId,
-        type: "receta",
-        date: new Date(),
-        prescription: { templateId: body.templateId, items: body.items } as Prisma.InputJsonValue,
-      },
-      include: { professional: { select: { id: true, name: true } } },
-    });
+          professionalId: body.professionalId,
+          type: "receta",
+          date: new Date(),
+          prescription: {
+            templateId: body.templateId,
+            diagnosis: body.diagnosis,
+            warnings: body.warnings,
+            items: body.items,
+          } as Prisma.InputJsonValue,
+        },
+        include: {
+          professional: {
+            select: { id: true, name: true, specialty: true, registrationNo: true },
+          },
+        },
+      });
     await audit(req, "Emitió receta", "historia", `${pat.firstName} ${pat.lastName}`);
     res.status(201).json(r);
   } catch (e) {
@@ -443,6 +461,8 @@ router.post("/:id/recetas", requireModule("historia", "write"), async (req, res,
 
 const updRecetaSchema = z.object({
   professionalId: z.string().uuid().optional(),
+  diagnosis: z.string().trim().max(500).optional(),
+  warnings: z.string().trim().max(1_000).optional(),
   items: z.array(rxItemSchema).min(1).optional(),
 });
 router.patch("/:id/recetas/:rid", requireModule("historia", "write"), async (req, res, next) => {
@@ -457,14 +477,34 @@ router.patch("/:id/recetas/:rid", requireModule("historia", "write"), async (req
       await ensureProfessionalForClinic(body.professionalId, req.user!.clinicId);
       assertProfessionalAuthorship(req, body.professionalId);
     }
-    const prev = (cur.prescription as { templateId?: string; items: unknown[] } | null) ?? { items: [] };
+    const prev = (
+      cur.prescription as {
+        templateId?: string;
+        diagnosis?: string;
+        warnings?: string;
+        items: unknown[];
+      } | null
+    ) ?? { items: [] };
     const r = await prisma.clinicalRecord.update({
       where: { id: cur.id },
       data: {
         ...(body.professionalId ? { professionalId: body.professionalId } : {}),
-        ...(body.items ? { prescription: { templateId: prev.templateId, items: body.items } as Prisma.InputJsonValue } : {}),
+        ...(body.items || body.diagnosis !== undefined || body.warnings !== undefined
+          ? {
+              prescription: {
+                templateId: prev.templateId,
+                diagnosis: body.diagnosis ?? prev.diagnosis ?? "",
+                warnings: body.warnings ?? prev.warnings ?? "",
+                items: body.items ?? prev.items,
+              } as Prisma.InputJsonValue,
+            }
+          : {}),
       },
-      include: { professional: { select: { id: true, name: true } } },
+      include: {
+        professional: {
+          select: { id: true, name: true, specialty: true, registrationNo: true },
+        },
+      },
     });
     const pat = await prisma.patient.findFirst({
       where: { id: cur.patientId, clinicId: req.user!.clinicId },
@@ -475,6 +515,78 @@ router.patch("/:id/recetas/:rid", requireModule("historia", "write"), async (req
     next(e);
   }
 });
+
+router.get(
+  "/:id/recetas/:rid/document",
+  requireModule("historia"),
+  requireRole("admin", "profesional"),
+  async (req, res, next) => {
+    try {
+      const purpose = z.enum(["preview", "print"]).default("preview").parse(req.query.purpose);
+      const record = await prisma.clinicalRecord.findFirst({
+        where: {
+          id: req.params.rid,
+          patientId: req.params.id,
+          clinicId: req.user!.clinicId,
+          type: "receta",
+        },
+        include: {
+          clinic: { select: { name: true, ruc: true, logoData: true } },
+          patient: true,
+          professional: {
+            select: { id: true, name: true, specialty: true, registrationNo: true },
+          },
+        },
+      });
+      if (!record) throw notFound("Receta no encontrada");
+      assertProfessionalAuthorship(req, record.professionalId);
+
+      const prescription = (
+        record.prescription as {
+          diagnosis?: string;
+          warnings?: string;
+          items?: unknown[];
+        } | null
+      ) ?? {};
+      const parsedItems = z.array(rxItemSchema).parse(prescription.items ?? []);
+      const background = (
+        record.patient.background && typeof record.patient.background === "object"
+          ? record.patient.background
+          : {}
+      ) as { allergies?: unknown };
+      const allergies = z.array(z.string()).safeParse(background.allergies);
+
+      await audit(
+        req,
+        purpose === "print" ? "Imprimió receta" : "Consultó receta imprimible",
+        "historia",
+        `${record.patient.firstName} ${record.patient.lastName}`,
+      );
+
+      res.json({
+        generatedAt: new Date().toISOString(),
+        purpose,
+        id: record.id,
+        issuedAt: record.date.toISOString(),
+        clinic: record.clinic,
+        patient: {
+          id: record.patient.id,
+          fullName: `${record.patient.firstName} ${record.patient.lastName}`,
+          idType: record.patient.idType,
+          idNumber: record.patient.idNumber,
+          birthDate: record.patient.birthDate.toISOString(),
+          allergies: allergies.success ? allergies.data : [],
+        },
+        professional: record.professional,
+        diagnosis: prescription.diagnosis ?? "",
+        warnings: prescription.warnings ?? "",
+        items: parsedItems,
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.delete("/:id/recetas/:rid", requireModule("historia", "write"), async (req, res, next) => {
   try {

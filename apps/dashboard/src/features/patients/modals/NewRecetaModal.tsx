@@ -41,7 +41,15 @@ const RX_TEMPLATES: { id: string; name: string; items: RxItem[] }[] = [
 ];
 
 function emptyItem(): RxItem {
-  return { ingredients: [{ name: "", concentration: "" }], vehicle: "", quantity: "", instructions: "" };
+  return {
+    ingredients: [{ name: "", concentration: "" }],
+    vehicle: "",
+    quantity: "",
+    dosage: "",
+    frequency: "",
+    duration: "",
+    instructions: "",
+  };
 }
 
 export function NewRecetaModal({
@@ -57,6 +65,8 @@ export function NewRecetaModal({
   const { data: profs = [] } = useQuery({ queryKey: ["professionals"], queryFn: listProfessionals });
   const [professionalId, setProfessionalId] = useState(edit?.professionalId ?? "");
   const [templateId, setTemplateId] = useState(edit?.prescription?.templateId ?? "");
+  const [diagnosis, setDiagnosis] = useState(edit?.prescription?.diagnosis ?? "");
+  const [warnings, setWarnings] = useState(edit?.prescription?.warnings ?? "");
   const [items, setItems] = useState<RxItem[]>(
     edit?.prescription?.items?.length ? JSON.parse(JSON.stringify(edit.prescription.items)) : [emptyItem()],
   );
@@ -85,11 +95,18 @@ export function NewRecetaModal({
     mutationFn: () => {
       const cleanItems = items.filter((it) => it.ingredients.some((g) => g.name.trim()));
       if (edit) {
-        return updateReceta(patient.id, edit.id, { professionalId, items: cleanItems });
+        return updateReceta(patient.id, edit.id, {
+          professionalId,
+          diagnosis: diagnosis.trim(),
+          warnings: warnings.trim(),
+          items: cleanItems,
+        });
       }
       return createReceta(patient.id, {
         professionalId,
         templateId: templateId || undefined,
+        diagnosis: diagnosis.trim(),
+        warnings: warnings.trim(),
         items: cleanItems,
       });
     },
@@ -136,6 +153,22 @@ export function NewRecetaModal({
             </select>
           </Field>
         ) : null}
+      </div>
+      <div className="frow">
+        <Field label="Diagnóstico o motivo">
+          <input
+            value={diagnosis}
+            placeholder="Ej. Acné vulgar"
+            onChange={(e) => setDiagnosis(e.target.value)}
+          />
+        </Field>
+        <Field label="Advertencias generales">
+          <input
+            value={warnings}
+            placeholder="Ej. Suspender ante irritación intensa"
+            onChange={(e) => setWarnings(e.target.value)}
+          />
+        </Field>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -195,6 +228,29 @@ export function NewRecetaModal({
                   value={it.quantity}
                   placeholder="30 g"
                   onChange={(e) => updItem(i, { quantity: e.target.value })}
+                />
+              </Field>
+            </div>
+            <div className="frow">
+              <Field label="Dosis">
+                <input
+                  value={it.dosage ?? ""}
+                  placeholder="Ej. una cápsula"
+                  onChange={(e) => updItem(i, { dosage: e.target.value })}
+                />
+              </Field>
+              <Field label="Frecuencia">
+                <input
+                  value={it.frequency ?? ""}
+                  placeholder="Ej. cada 12 horas"
+                  onChange={(e) => updItem(i, { frequency: e.target.value })}
+                />
+              </Field>
+              <Field label="Duración">
+                <input
+                  value={it.duration ?? ""}
+                  placeholder="Ej. 7 días"
+                  onChange={(e) => updItem(i, { duration: e.target.value })}
                 />
               </Field>
             </div>

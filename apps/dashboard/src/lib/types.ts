@@ -108,6 +108,9 @@ export interface RxItem {
   ingredients: { name: string; concentration: string }[];
   vehicle: string;
   quantity: string;
+  dosage?: string;
+  frequency?: string;
+  duration?: string;
   instructions: string;
 }
 
@@ -122,8 +125,14 @@ export interface ClinicalRecord {
   assessment: string | null;
   plan: string | null;
   cie10Codes: string[];
-  prescription: { templateId?: string; items?: RxItem[]; clinicalMetrics?: ClinicalMetrics } | null;
-  professional: { id: string; name: string } | null;
+  prescription: {
+    templateId?: string;
+    diagnosis?: string;
+    warnings?: string;
+    items?: RxItem[];
+    clinicalMetrics?: ClinicalMetrics;
+  } | null;
+  professional: Pick<Professional, "id" | "name" | "specialty" | "registrationNo"> | null;
 }
 
 export interface ClinicalMetrics {
@@ -327,6 +336,26 @@ export interface ClinicalFile {
   procedures: Procedure[];
   consents: ClinicalFileConsent[];
   photos: ClinicalFilePhoto[];
+}
+
+export interface PrescriptionDocument {
+  generatedAt: string;
+  purpose: "preview" | "print";
+  id: string;
+  issuedAt: string;
+  clinic: { name: string; ruc: string | null; logoData: string | null };
+  patient: {
+    id: string;
+    fullName: string;
+    idType: string;
+    idNumber: string;
+    birthDate: string;
+    allergies: string[];
+  };
+  professional: Pick<Professional, "id" | "name" | "specialty" | "registrationNo">;
+  diagnosis: string;
+  warnings: string;
+  items: RxItem[];
 }
 
 export interface Package {

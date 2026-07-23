@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { ROLES } from "@/lib/permissions";
 import type { Professional, Role } from "@/lib/types";
 import {
+  createProfessional,
   createUser,
   getPayphoneConfig,
   listAdminProfessionals,
@@ -15,7 +16,14 @@ import {
   patchUser,
   savePayphoneConfig,
 } from "./api";
-import type { AdminUser, NewAdminUserInput, PayphoneConfig, UpdateAdminUserInput } from "./api";
+import type {
+  AdminProfessional,
+  AdminUser,
+  NewAdminUserInput,
+  NewProfessionalInput,
+  PayphoneConfig,
+  UpdateAdminUserInput,
+} from "./api";
 import { ConsentTemplatesSettings } from "./ConsentTemplatesSettings";
 
 export function AdminView() {
@@ -32,7 +40,7 @@ function AdminPanel() {
 
   return (
     <div className="content-inner">
-      <PageHead title="Sistema" sub="Usuarios y roles">
+      <PageHead title="Sistema" sub="Documentos, perfiles clínicos, usuarios y roles">
         <Btn kind="primary" icon="plus" onClick={() => setOpenCreate(true)}>
           Nuevo usuario
         </Btn>
@@ -40,10 +48,154 @@ function AdminPanel() {
 
       <PayphoneSettings />
       <ConsentTemplatesSettings />
+      <ProfessionalsSection />
       <UsersSection />
 
       {openCreate ? <CreateUserModal onClose={() => setOpenCreate(false)} /> : null}
     </div>
+  );
+}
+
+function ProfessionalsSection() {
+  const [creating, setCreating] = useState(false);
+  const { data: professionals = [], isLoading } = useQuery({
+    queryKey: ["admin-professionals"],
+    queryFn: listAdminProfessionals,
+  });
+
+  return (
+    <>
+      <div className="section-head-row">
+        <div>
+          <p className="card-title" style={{ marginBottom: 3 }}>Profesionales clínicos</p>
+          <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
+            Estos perfiles alimentan Agenda, evoluciones, recetas, procedimientos y fichas clínicas.
+          </p>
+        </div>
+        <Btn sm kind="primary" icon="plus" onClick={() => setCreating(true)}>
+          Nuevo profesional
+        </Btn>
+      </div>
+      <div className="card" style={{ marginBottom: 28 }}>
+        {isLoading ? (
+          <EmptyState icon="user">Cargando profesionales…</EmptyState>
+        ) : professionals.length === 0 ? (
+          <EmptyState icon="user">
+            No hay perfiles profesionales. Los usuarios con rol Profesional no aparecen en los campos clínicos hasta crear y vincular su perfil.
+          </EmptyState>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead>
+                <tr><th>Profesional</th><th>Especialidad</th><th>Registro</th><th>Usuario vinculado</th></tr>
+              </thead>
+              <tbody>
+                {professionals.map((professional: AdminProfessional) => (
+                  <tr key={professional.id}>
+                    <td><strong>{professional.name}</strong></td>
+                    <td>{professional.specialty}</td>
+                    <td>{professional.registrationNo}</td>
+                    <td>
+                      {professional.users.length
+                        ? professional.users.map((user) => user.fullName).join(", ")
+                        : <span className="muted">Sin usuario vinculado</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      {creating ? <CreateProfessionalModal onClose={() => setCreating(false)} /> : null}
+    </>
+  );
+}
+
+function CreateProfessionalModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const { data: users = [] } = useQuery({ queryKey: ["admin-users"], queryFn: listUsers });
+  const availableUsers = users.filter(
+    (user) =>
+      (user.role === "profesional" || user.role === "esteticista")
+      && !user.professionalId,
+  );
+  const [form, setForm] = useState<NewProfessionalInput>({
+    name: "",
+    specialty: "Dermatología",
+    registrationNo: "",
+    color: "#7A4A2B",
+    userId: null,
+  });
+  const valid = form.name.trim().length >= 2
+    && form.specialty.trim().length >= 2
+    && form.registrationNo.trim().length >= 2;
+
+  const mutation = useMutation({
+    mutationFn: () => createProfessional({
+      ...form,
+      name: form.name.trim(),
+      specialty: form.specialty.trim(),
+      registrationNo: form.registrationNo.trim(),
+      userId: form.userId || null,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-professionals"] });
+      qc.invalidateQueries({ queryKey: ["professionals"] });
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      onClose();
+    },
+  });
+
+  return (
+    <Modal
+      title="Nuevo perfil profesional"
+      onClose={onClose}
+      foot={
+        <>
+          <Btn onClick={onClose}>Cancelar</Btn>
+          <Btn kind="primary" icon="check" disabled={!valid || mutation.isPending} onClick={() => mutation.mutate()}>
+            {mutation.isPending ? "Creando…" : "Crear y vincular"}
+          </Btn>
+        </>
+      }
+    >
+      <Field label="Usuario clínico a vincular (opcional)">
+        <select
+          value={form.userId ?? ""}
+          onChange={(event) => {
+            const userId = event.target.value || null;
+            const user = availableUsers.find((item) => item.id === userId);
+            setForm({ ...form, userId, name: form.name || user?.fullName || "" });
+          }}
+        >
+          <option value="">Sin usuario vinculado</option>
+          {availableUsers.map((user) => (
+            <option key={user.id} value={user.id}>{user.fullName} · {ROLES[user.role].label}</option>
+          ))}
+        </select>
+      </Field>
+      <div className="frow">
+        <Field label="Nombre que aparecerá en documentos">
+          <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Dra. Nombre Apellido" />
+        </Field>
+        <Field label="Especialidad">
+          <input value={form.specialty} onChange={(event) => setForm({ ...form, specialty: event.target.value })} placeholder="Dermatología" />
+        </Field>
+      </div>
+      <div className="frow">
+        <Field label="Registro profesional">
+          <input value={form.registrationNo} onChange={(event) => setForm({ ...form, registrationNo: event.target.value })} placeholder="Número real del registro" />
+        </Field>
+        <Field label="Color en agenda">
+          <input type="color" value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} />
+        </Field>
+      </div>
+      <p className="muted" style={{ fontSize: 12.5 }}>
+        El registro profesional se mostrará en la receta entregada al paciente. Use el número real; DERMA-OS no lo completa automáticamente.
+      </p>
+      {mutation.isError ? <p className="form-error">{(mutation.error as Error).message}</p> : null}
+    </Modal>
   );
 }
 
@@ -328,7 +480,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
       </Field>
       {isClinicalRole && professionals.length === 0 && !loadingProfessionals ? (
         <p className="muted" style={{ marginTop: 8, fontSize: 12.5 }}>
-          No hay profesionales en catalogo. Primero crea o conserva el profesional base y luego vincula el usuario.
+          No hay perfiles en el catálogo. Puede guardar este usuario y después crear y vincular su perfil en la sección Profesionales clínicos.
         </p>
       ) : null}
       <div

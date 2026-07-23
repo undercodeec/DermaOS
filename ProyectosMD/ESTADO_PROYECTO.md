@@ -1,5 +1,71 @@
 # 📋 ESTADO DEL PROYECTO — DERMA-OS
-> Ultima actualizacion: 2026-07-22 (despliegue validado, SMTP operativo y regresion automatizada en CI)
+> Ultima actualizacion: 2026-07-23 (receta imprimible, perfiles profesionales y flujo guiado de consentimientos)
+
+---
+
+## Continuacion de desarrollo (2026-07-23)
+
+### Receta independiente para entregar al paciente
+
+- La pestaña **Pacientes → Recetas** incorpora una vista independiente **Imprimir / Guardar PDF**; ya no es necesario entregar la ficha clinica completa.
+- La receta muestra solo membrete de la clinica, fecha, paciente, identificacion, edad, alergias registradas, diagnostico, formulas/medicamentos, concentracion, forma o vehiculo, cantidad, dosis, frecuencia, duracion, indicaciones, advertencias y profesional con especialidad y registro.
+- Crear y editar recetas permite registrar los nuevos campos. Las recetas historicas siguen siendo compatibles y muestran los datos disponibles.
+- La consulta e impresion se auditan por separado y se restringen a `admin` y `profesional`, conservando `clinicId` y la autoria del profesional.
+
+### Perfiles profesionales visibles en Pacientes
+
+- Se confirmo que `users` y `professionals` eran entidades separadas: crear un usuario con rol `profesional` no creaba una ficha en el catalogo clinico y la UI no ofrecía una forma de crearla.
+- **Sistema → Profesionales clinicos** ahora permite crear el perfil con nombre documental, especialidad, registro profesional y color de agenda, y vincularlo a un usuario profesional o esteticista existente.
+- Una vez creado, el perfil aparece en los selectores de evolucion, recetas, procedimientos, agenda y ficha clinica.
+- La vinculacion se ejecuta en una transaccion, incrementa la version de autenticacion del usuario vinculado y mantiene el aislamiento por clinica.
+
+### Consentimientos desde el paciente
+
+- Crear o importar una plantilla desde **Pacientes → Consentimientos** ya no cierra silenciosamente el flujo dejando un borrador invisible.
+- El administrador ve el texto extraido o redactado, debe revisarlo y puede elegir **Aprobar y usar con este paciente**; la plantilla aprobada queda seleccionada para generar el consentimiento pendiente.
+- El profesional puede proponer el borrador y recibe una explicacion clara de que un administrador debe aprobarlo.
+- Se conserva la politica de inmutabilidad: importar o redactar no crea directamente un consentimiento legal; primero existe una plantilla borrador, luego una version aprobada y finalmente el documento del paciente.
+
+### Validacion de esta continuacion
+
+- Typecheck API y dashboard: OK.
+- Lint dashboard: OK.
+- Pruebas unitarias: 20/20 OK.
+- Suite HTTP/BD: 14/14 escenarios OK, incluyendo receta imprimible, vinculacion de profesional, consentimiento borrador→aprobacion→generacion y aislamiento entre clinicas.
+- API y dashboard de produccion: build OK; dashboard con 970 modulos, 460.05 kB minificado / 129.74 kB gzip.
+- PostgreSQL 16 temporal: 15 migraciones aplicadas y contenedor eliminado al finalizar.
+- No se requiere una migracion Prisma: los campos adicionales de receta viven en el JSON estructurado existente.
+
+### Evaluacion frente al MVP investigado
+
+La comparacion con `.claude/docs_historicos/investigacion-necesidades-dermatologia-ecuador.md` da un resultado **apto para un piloto clinico controlado de una sede, pero todavia no equivalente al MVP comercial completo descrito en la investigacion**.
+
+| Necesidad | Estado actual | Evaluacion |
+|---|---|---|
+| Historia clinica dermatologica | Paciente, antecedentes, alergias, medicamentos, Fitzpatrick, evolucion SOAP, CIE-10, recetas, procedimientos y ficha consolidada | Parcial: faltan mapa corporal/lesiones estructurado, ordenes y resultados de laboratorio, imagen y patologia, interconsultas y alertas farmacologicas criticas |
+| Fotografias clinicas privadas | Binarios protegidos con JWT, aislamiento por clinica, auditoria, reemplazo/eliminacion y comparacion basal/control | Parcial: faltan metadatos normalizados de angulo, iluminacion, dispositivo y sesion, hash del archivo y enlace directo con alcance/revocacion del consentimiento de imagen |
+| Consentimientos digitales | Plantillas versionadas, aprobacion administrativa, firma, PDF, hash, eventos, revocacion/adenda e inmutabilidad | Cumple el nucleo; el contenido juridico final de cada plantilla debe validarlo la clinica y falta enlazar el permiso de imagen con cada fotografia/publicacion |
+| Receta para el paciente | Documento independiente imprimible con datos clinicos y profesionales necesarios | Cumple el alcance basico; no sustituye una integracion de prescripcion electronica ni valida interacciones medicamentosas |
+| Paquetes, sesiones y abonos | Saldos, pagos parciales, vigencia, consumo por cita, vendedor y ejecutor | Cumple el nucleo; faltan congelacion, transferencia, devolucion y rentabilidad por tratamiento |
+| Inventario | Productos/insumos/medicamentos, lote, caducidad, minimo y ajustes auditados | Parcial: falta kardex de movimientos, costo promedio, consumo automatico por servicio y transferencias entre sedes |
+| WhatsApp | Enlaces/acciones manuales y registro de canal en ciertos cobros | No cumple la integracion propuesta: faltan BSP/API oficial, plantillas aprobadas, recordatorios automaticos, estados de entrega y respuestas |
+| Facturacion electronica SRI | Flujo y estados simulados | No cumple para emision fiscal real: falta conectar y certificar un proveedor autorizado |
+| Payphone | Creacion de links y webhook idempotente implementados | Implementado, pendiente validacion final con credenciales y transacciones reales antes del piloto |
+| Roles, aislamiento y auditoria | RBAC, permisos por modulo, auditoria encadenada, MFA de plataforma y barreras multi-tenant probadas | Cumple el nucleo tecnico |
+| CRM de prospectos y sitio publico | No existe un modulo integrado de leads/CRM ni captacion desde el sitio | No cumple si se aplica literalmente el resumen ejecutivo; la propia investigacion lo ubica tambien en una fase 2, por lo que debe fijarse el alcance comercial |
+| Respaldo y recuperacion | Procedimiento definitivo y restauracion real aun diferidos | Bloqueante operativo antes de usar datos clinicos reales |
+| Multi-sede, teledermatologia, membresias y comisiones | No implementados | Fuera de la fase 1 segun la hoja de ruta, no bloquean un piloto de una sola sede |
+
+**Veredicto:** Derma-OS ya cubre la operacion clinica esencial de pacientes, agenda, historia basica, fotos privadas, consentimientos, recetas, procedimientos, paquetes, pagos e inventario basico. Para afirmar que cumple todo el primer MVP de la investigacion deben cerrarse como minimo respaldos/restauracion, WhatsApp real, facturacion SRI real y los faltantes estructurales de inventario. La profundidad dermatologica de la HCU y la trazabilidad foto-consentimiento son las siguientes prioridades clinicas.
+
+### Punto exacto de reanudacion
+
+1. Obtener en la VPS el commit publicado de esta continuacion, reconstruir API/dashboard, reiniciar `derma-api` y ejecutar `scripts/verify-vps.sh`.
+2. En **Sistema → Profesionales clinicos**, crear y vincular los perfiles de los usuarios ya existentes usando su especialidad y registro real.
+3. Probar visualmente en VPS la receta A4, la creacion/vinculacion del profesional y el flujo de consentimiento importado/manual.
+4. Definir y probar el respaldo cifrado y una restauracion completa antes de cargar datos clinicos reales.
+5. Integrar WhatsApp mediante un BSP oficial y facturacion electronica mediante un proveedor SRI; validar Payphone con credenciales/transacciones reales si formara parte del piloto.
+6. Priorizar despues el kardex/consumo automatico de inventario, la HCU dermatologica estructurada y el enlace foto-consentimiento.
 
 ---
 

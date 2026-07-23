@@ -13,6 +13,18 @@ export interface AdminUser {
   createdAt: string;
 }
 
+export interface AdminProfessional extends Professional {
+  users: Array<Pick<AdminUser, "id" | "fullName" | "email" | "role">>;
+}
+
+export interface NewProfessionalInput {
+  name: string;
+  specialty: string;
+  registrationNo: string;
+  color: string;
+  userId?: string | null;
+}
+
 export interface AuditLogEntry {
   id: string;
   userId: string | null;
@@ -111,8 +123,12 @@ export function patchUser(
   return api.patch<AdminUser>(`/admin/users/${id}`, input);
 }
 
-export function listAdminProfessionals(): Promise<Professional[]> {
-  return api.get<Professional[]>("/professionals");
+export function listAdminProfessionals(): Promise<AdminProfessional[]> {
+  return api.get<AdminProfessional[]>("/admin/professionals");
+}
+
+export function createProfessional(input: NewProfessionalInput): Promise<AdminProfessional> {
+  return api.post<AdminProfessional>("/admin/professionals", input);
 }
 
 export interface AuditFilter {

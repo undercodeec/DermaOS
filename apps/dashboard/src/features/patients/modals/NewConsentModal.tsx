@@ -32,10 +32,17 @@ export function NewConsentModal({ patient, role, onClose }: { patient: Patient; 
   });
 
   if (creatingTemplate) {
-    return <TemplateQuickCreateModal role={role} onClose={() => setCreatingTemplate(false)} onCreated={() => {
-      qc.invalidateQueries({ queryKey: ["consent-templates"] });
-      setCreatingTemplate(false);
-    }} />;
+    return (
+      <TemplateQuickCreateModal
+        role={role}
+        onClose={() => setCreatingTemplate(false)}
+        onCreated={(templateId) => {
+          qc.invalidateQueries({ queryKey: ["consent-templates"] });
+          if (templateId) setTid(templateId);
+          setCreatingTemplate(false);
+        }}
+      />
+    );
   }
 
   return (

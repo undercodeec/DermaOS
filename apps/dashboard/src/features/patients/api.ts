@@ -16,6 +16,7 @@ import type {
   Photo,
   Procedure,
   Professional,
+  PrescriptionDocument,
   RxItem,
   Service,
 } from "@/lib/types";
@@ -105,6 +106,8 @@ export function deleteEvolucion(patientId: string, rid: string): Promise<null> {
 export interface NewRecetaInput {
   professionalId: string;
   templateId?: string;
+  diagnosis?: string;
+  warnings?: string;
   items: RxItem[];
 }
 export function createReceta(patientId: string, input: NewRecetaInput): Promise<ClinicalRecord> {
@@ -115,6 +118,15 @@ export function updateReceta(patientId: string, rid: string, input: Partial<NewR
 }
 export function deleteReceta(patientId: string, rid: string): Promise<null> {
   return api.del<null>(`/patients/${patientId}/recetas/${rid}`);
+}
+export function getPrescriptionDocument(
+  patientId: string,
+  rid: string,
+  purpose: "preview" | "print" = "preview",
+): Promise<PrescriptionDocument> {
+  return api.get<PrescriptionDocument>(
+    `/patients/${patientId}/recetas/${rid}/document?purpose=${purpose}`,
+  );
 }
 
 // ----- Consents -----

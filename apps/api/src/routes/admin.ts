@@ -336,6 +336,88 @@ router.put("/payphone", async (req, res, next) => {
   }
 });
 
+const professionalSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+  specialty: z.string().trim().min(2).max(120),
+  registrationNo: z.string().trim().min(2).max(80),
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).default("#7A4A2B"),
+  userId: z.string().uuid().optional().nullable(),
+});
+
+const adminProfessionalSelect = {
+  id: true,
+  name: true,
+  specialty: true,
+  registrationNo: true,
+  color: true,
+  users: {
+    select: { id: true, fullName: true, email: true, role: true },
+    orderBy: { fullName: "asc" as const },
+  },
+} as const;
+
+router.get("/professionals", async (req, res, next) => {
+  try {
+    const professionals = await prisma.professional.findMany({
+      where: { clinicId: req.user!.clinicId },
+      select: adminProfessionalSelect,
+      orderBy: { name: "asc" },
+    });
+    res.json(professionals);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/professionals", async (req, res, next) => {
+  try {
+    const body = professionalSchema.parse(req.body);
+    const user = body.userId
+      ? await prisma.user.findFirst({
+          where: { id: body.userId, clinicId: req.user!.clinicId },
+          select: { id: true, role: true, professionalId: true },
+        })
+      : null;
+    if (body.userId && !user) throw badRequest("Usuario no válido para esta clínica");
+    if (user && user.role !== "profesional" && user.role !== "esteticista") {
+      throw badRequest("Solo se puede vincular un usuario profesional o esteticista");
+    }
+    if (user?.professionalId) throw conflict("El usuario ya tiene un perfil profesional asociado");
+
+    const professional = await prisma.$transaction(async (tx) => {
+      const created = await tx.professional.create({
+        data: {
+          clinicId: req.user!.clinicId,
+          name: body.name,
+          specialty: body.specialty,
+          registrationNo: body.registrationNo,
+          color: body.color,
+        },
+      });
+      if (user) {
+        await tx.user.update({
+          where: { id: user.id },
+          data: { professionalId: created.id, authVersion: { increment: 1 } },
+        });
+      }
+      return tx.professional.findUniqueOrThrow({
+        where: { id: created.id },
+        select: adminProfessionalSelect,
+      });
+    });
+
+    await audit(
+      req,
+      "Creó perfil profesional",
+      "sistema",
+      `${professional.name} · ${professional.registrationNo}`,
+    );
+    res.status(201).json(professional);
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get("/users", async (req, res, next) => {
   try {
     const list = await prisma.user.findMany({

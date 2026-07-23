@@ -10,7 +10,9 @@ El rol `admin` configura el logo, aprueba, versiona y archiva las plantillas des
 4. Aprobar el borrador. Una versión aprobada queda bloqueada.
 5. Para cambiar una versión aprobada, usar **Nueva versión**, editar el nuevo borrador y aprobarlo.
 
-Al abrir **Pacientes → Consentimientos → Generar consentimiento**, `admin` y `profesional` también ven **Crear o importar plantilla**. Desde ese mismo flujo pueden crear un borrador manual o cargar un PDF/DOCX; el profesional puede proponer el borrador, pero un `admin` debe revisarlo y aprobarlo antes de usarlo con pacientes.
+Al abrir **Pacientes → Consentimientos → Generar consentimiento**, `admin` y `profesional` también ven **Crear o importar plantilla**. Desde ese mismo flujo pueden crear un borrador manual o cargar un PDF/DOCX. El administrador revisa el texto mostrado y puede elegir **Aprobar y usar con este paciente**; el profesional puede proponer el borrador, pero un `admin` debe revisarlo y aprobarlo antes de usarlo con pacientes.
+
+Crear o importar una plantilla no genera por sí solo el documento del paciente. El flujo correcto es: **borrador → revisión → aprobación → generación para el paciente → firma**. Esto evita que un texto importado, incompleto o no revisado se convierta directamente en un consentimiento legal.
 
 Solo las plantillas aprobadas y autorizadas para el rol activo aparecen al generar un consentimiento. Por defecto pueden generarlas `admin` y `profesional`; el administrador puede habilitar expresamente una plantilla para `esteticista`. `recepcion` solo facilita la firma de un documento previamente preparado y `contador` no tiene acceso.
 

@@ -109,6 +109,15 @@ test("HTTP/BD: aislamiento, roles y concurrencia", { skip: !integrationDatabaseU
       role: "admin",
     },
   });
+  const unlinkedProfessionalUser = await prisma.user.create({
+    data: {
+      clinicId: clinicOne.id,
+      fullName: "Profesional pendiente de perfil",
+      email: `perfil.${suffix}@integration.test`,
+      passwordHash: "integration-only",
+      role: "profesional",
+    },
+  });
 
   const background = {
     skinType: "III",
@@ -213,6 +222,28 @@ test("HTTP/BD: aislamiento, roles y concurrencia", { skip: !integrationDatabaseU
   const consent = await prisma.consent.create({
     data: { clinicId: clinicOne.id, patientId: patientOne.id, templateId: consentTemplate.id },
   });
+  const prescription = await prisma.clinicalRecord.create({
+    data: {
+      clinicId: clinicOne.id,
+      patientId: patientOne.id,
+      professionalId: professionalOne.id,
+      type: "receta",
+      cie10Codes: [],
+      prescription: {
+        diagnosis: "Dermatitis de contacto",
+        warnings: "Suspender ante irritación intensa",
+        items: [{
+          ingredients: [{ name: "Hidrocortisona", concentration: "1%" }],
+          vehicle: "crema",
+          quantity: "20 g",
+          dosage: "capa fina",
+          frequency: "cada 12 horas",
+          duration: "5 días",
+          instructions: "Aplicar únicamente en el área indicada.",
+        }],
+      },
+    },
+  });
 
   const tokenFor = (user: (typeof users)[number] | typeof adminTwo) => signToken({
     sub: user.id,
@@ -276,6 +307,105 @@ test("HTTP/BD: aislamiento, roles y concurrencia", { skip: !integrationDatabaseU
       assert.equal(crossTenant.status, 404);
     });
 
+    await t.test("receta imprimible contiene solo datos clínicos necesarios y respeta roles", async () => {
+      for (const role of ["admin", "profesional"] as const) {
+        const response = await request(
+          `/patients/${patientOne.id}/recetas/${prescription.id}/document`,
+          {},
+          tokens[role],
+        );
+        assert.equal(response.status, 200);
+        const body = await response.json() as {
+          patient: { idNumber: string; allergies: string[] };
+          professional: { id: string; registrationNo: string };
+          diagnosis: string;
+          warnings: string;
+          items: Array<{ dosage: string; frequency: string; duration: string }>;
+        };
+        assert.equal(body.patient.idNumber, patientOne.idNumber);
+        assert.equal(body.professional.id, professionalOne.id);
+        assert.equal(body.professional.registrationNo, professionalOne.registrationNo);
+        assert.equal(body.diagnosis, "Dermatitis de contacto");
+        assert.equal(body.warnings, "Suspender ante irritación intensa");
+        assert.deepEqual(
+          [body.items[0]?.dosage, body.items[0]?.frequency, body.items[0]?.duration],
+          ["capa fina", "cada 12 horas", "5 días"],
+        );
+      }
+      assert.equal(
+        (await request(
+          `/patients/${patientOne.id}/recetas/${prescription.id}/document`,
+          {},
+          tokens.recepcion,
+        )).status,
+        403,
+      );
+      assert.equal(
+        (await request(
+          `/patients/${patientTwo.id}/recetas/${prescription.id}/document`,
+          {},
+          tokens.admin,
+        )).status,
+        404,
+      );
+    });
+
+    await t.test("administrador crea y vincula un perfil profesional visible en Pacientes", async () => {
+      const created = await request("/admin/professionals", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Dra. Perfil Vinculado",
+          specialty: "Dermatología",
+          registrationNo: `REG-LINK-${suffix}`,
+          color: "#336699",
+          userId: unlinkedProfessionalUser.id,
+        }),
+      }, tokens.admin);
+      assert.equal(created.status, 201);
+      const body = await created.json() as { id: string; users: Array<{ id: string }> };
+      assert.deepEqual(body.users.map((user) => user.id), [unlinkedProfessionalUser.id]);
+      assert.equal(
+        (await prisma.user.findUniqueOrThrow({ where: { id: unlinkedProfessionalUser.id } })).professionalId,
+        body.id,
+      );
+
+      const catalog = await request("/professionals", {}, tokens.admin);
+      assert.equal(catalog.status, 200);
+      const professionals = await catalog.json() as Array<{ id: string }>;
+      assert.equal(professionals.some((professional) => professional.id === body.id), true);
+    });
+
+    await t.test("borrador de consentimiento se revisa, aprueba y genera para el paciente", async () => {
+      const draft = await request("/consents/templates/drafts", {
+        method: "POST",
+        body: JSON.stringify({
+          kind: "clinico",
+          title: "Consentimiento guiado",
+          procedureType: "Procedimiento de prueba",
+          body: "Declaro que recibí información suficiente sobre riesgos, beneficios, alternativas y revocación.",
+        }),
+      }, tokens.admin);
+      assert.equal(draft.status, 201);
+      const draftBody = await draft.json() as { id: string; status: string };
+      assert.equal(draftBody.status, "borrador");
+
+      const beforeApproval = await request("/consent-templates", {}, tokens.admin);
+      const unavailable = await beforeApproval.json() as Array<{ id: string }>;
+      assert.equal(unavailable.some((template) => template.id === draftBody.id), false);
+
+      const approval = await request(`/admin/consent-templates/${draftBody.id}/approve`, {
+        method: "POST",
+      }, tokens.admin);
+      assert.equal(approval.status, 200);
+
+      const generated = await request(`/patients/${patientOne.id}/consents`, {
+        method: "POST",
+        body: JSON.stringify({ templateId: draftBody.id }),
+      }, tokens.admin);
+      assert.equal(generated.status, 201);
+      assert.equal((await generated.json() as { status: string }).status, "pendiente");
+    });
+
     await t.test("lecturas de pacientes y usuarios nunca cruzan clinicas", async () => {
       for (const path of [
         `/patients/${patientTwo.id}`,
@@ -293,7 +423,10 @@ test("HTTP/BD: aislamiento, roles y concurrencia", { skip: !integrationDatabaseU
       const clinicOneUsersResponse = await request("/admin/users", {}, tokens.admin);
       assert.equal(clinicOneUsersResponse.status, 200);
       const clinicOneUsers = await clinicOneUsersResponse.json() as Array<{ id: string }>;
-      assert.deepEqual(new Set(clinicOneUsers.map((user) => user.id)), new Set(users.map((user) => user.id)));
+      assert.deepEqual(
+        new Set(clinicOneUsers.map((user) => user.id)),
+        new Set([...users.map((user) => user.id), unlinkedProfessionalUser.id]),
+      );
 
       const clinicTwoUsersResponse = await request("/admin/users", {}, tokenFor(adminTwo));
       assert.equal(clinicTwoUsersResponse.status, 200);

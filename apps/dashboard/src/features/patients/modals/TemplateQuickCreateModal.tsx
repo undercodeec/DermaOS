@@ -6,7 +6,22 @@ import type { Role } from "@/lib/types";
 
 type Mode = "choose" | "manual" | "import";
 
-export function TemplateQuickCreateModal({ role, onClose, onCreated }: { role: Role; onClose: () => void; onCreated: () => void }) {
+interface CreatedTemplate {
+  id: string;
+  title: string;
+  body: string;
+  status: "borrador" | "aprobada" | "archivada";
+}
+
+export function TemplateQuickCreateModal({
+  role,
+  onClose,
+  onCreated,
+}: {
+  role: Role;
+  onClose: () => void;
+  onCreated: (templateId?: string) => void;
+}) {
   const [mode, setMode] = useState<Mode>("choose");
   const [kind, setKind] = useState<"clinico" | "imagen">("clinico");
   const [title, setTitle] = useState("");
@@ -15,13 +30,20 @@ export function TemplateQuickCreateModal({ role, onClose, onCreated }: { role: R
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [created, setCreated] = useState<CreatedTemplate | null>(null);
 
   const save = async () => {
     setError("");
     setSaving(true);
     try {
       if (mode === "manual") {
-        await api.post("/consents/templates/drafts", { kind, title, procedureType, body });
+        const result = await api.post<CreatedTemplate>("/consents/templates/drafts", {
+          kind,
+          title,
+          procedureType,
+          body,
+        });
+        setCreated(result);
       } else {
         if (!file) throw new Error("Seleccione un archivo PDF o DOCX");
         const form = new FormData();
@@ -29,16 +51,68 @@ export function TemplateQuickCreateModal({ role, onClose, onCreated }: { role: R
         form.append("kind", kind);
         form.append("title", title);
         form.append("procedureType", procedureType);
-        await api.post("/consents/templates/import", form);
+        const result = await api.post<CreatedTemplate>("/consents/templates/import", form);
+        setCreated(result);
       }
-      onCreated();
-      onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo crear el borrador");
     } finally {
       setSaving(false);
     }
   };
+
+  const approveAndUse = async () => {
+    if (!created) return;
+    setError("");
+    setSaving(true);
+    try {
+      const approved = await api.post<CreatedTemplate>(
+        `/admin/consent-templates/${created.id}/approve`,
+      );
+      onCreated(approved.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo aprobar la plantilla");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (created) {
+    const isAdmin = role === "admin";
+    return (
+      <Modal
+        wide
+        title={isAdmin ? "Revisar borrador antes de usar" : "Borrador enviado a revisión"}
+        onClose={onClose}
+        foot={
+          <>
+            <Btn onClick={() => {
+              onCreated();
+              onClose();
+            }}>
+              {isAdmin ? "Cerrar y revisar en Sistema" : "Cerrar"}
+            </Btn>
+            {isAdmin ? (
+              <Btn kind="primary" icon="check" disabled={saving} onClick={approveAndUse}>
+                {saving ? "Aprobando…" : "Aprobar y usar con este paciente"}
+              </Btn>
+            ) : null}
+          </>
+        }
+      >
+        <p style={{ marginTop: 0 }}>
+          <strong>{created.title}</strong>
+        </p>
+        <div className="consent-draft-review">{created.body}</div>
+        <p className="muted" style={{ fontSize: 12.5 }}>
+          {isAdmin
+            ? "Compruebe que el texto corresponde al procedimiento y contiene riesgos, beneficios, alternativas y revocación. Al aprobar, esta versión quedará bloqueada."
+            : "Un administrador debe revisar y aprobar este texto. Después aparecerá en la lista de plantillas disponibles para generar el consentimiento."}
+        </p>
+        {error ? <p className="form-error">{error}</p> : null}
+      </Modal>
+    );
+  }
 
   if (mode === "choose") {
     return (
