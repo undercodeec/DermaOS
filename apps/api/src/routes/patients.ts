@@ -41,6 +41,17 @@ async function ensureProfessionalForClinic(professionalId: string, clinicId: str
   return professional;
 }
 
+async function ensureProfessionalCanPrescribe(professionalId: string, clinicId: string) {
+  const professional = await prisma.professional.findFirst({
+    where: { id: professionalId, clinicId },
+    select: { registrationNo: true },
+  });
+  if (!professional) throw badRequest("Profesional no valido para esta clinica");
+  if (!professional.registrationNo?.trim()) {
+    throw badRequest("Completa el identificador profesional antes de emitir una receta");
+  }
+}
+
 function assertProfessionalAuthorship(req: Express.Request, professionalId: string) {
   if (req.user!.role !== "profesional" && req.user!.role !== "esteticista") return;
   if (!req.user!.professionalId) throw forbidden("El usuario no tiene un profesional asociado");
@@ -431,6 +442,7 @@ router.post("/:id/recetas", requireModule("historia", "write"), async (req, res,
     if (!pat) throw notFound("Paciente no encontrado");
     const body = newRecetaSchema.parse(req.body);
     await ensureProfessionalForClinic(body.professionalId, req.user!.clinicId);
+    await ensureProfessionalCanPrescribe(body.professionalId, req.user!.clinicId);
     assertProfessionalAuthorship(req, body.professionalId);
     const r = await prisma.clinicalRecord.create({
       data: {
@@ -475,6 +487,7 @@ router.patch("/:id/recetas/:rid", requireModule("historia", "write"), async (req
     const body = updRecetaSchema.parse(req.body);
     if (body.professionalId) {
       await ensureProfessionalForClinic(body.professionalId, req.user!.clinicId);
+      await ensureProfessionalCanPrescribe(body.professionalId, req.user!.clinicId);
       assertProfessionalAuthorship(req, body.professionalId);
     }
     const prev = (

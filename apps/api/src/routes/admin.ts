@@ -339,7 +339,7 @@ router.put("/payphone", async (req, res, next) => {
 const professionalSchema = z.object({
   name: z.string().trim().min(2).max(160),
   specialty: z.string().trim().min(2).max(120),
-  registrationNo: z.string().trim().min(2).max(80),
+  registrationNo: z.string().trim().max(80).optional().nullable(),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).default("#7A4A2B"),
   userId: z.string().uuid().optional().nullable(),
 });
@@ -410,7 +410,7 @@ router.post("/professionals", async (req, res, next) => {
       req,
       "Creó perfil profesional",
       "sistema",
-      `${professional.name} · ${professional.registrationNo}`,
+      `${professional.name} · ${professional.registrationNo ?? "identificador pendiente"}`,
     );
     res.status(201).json(professional);
   } catch (e) {
@@ -457,7 +457,7 @@ const createUserSchema = z.object({
   professionalId: z.string().uuid().optional().nullable(),
   professionalProfile: z.object({
     specialty: z.string().trim().min(2).max(120),
-    registrationNo: z.string().trim().min(2).max(80),
+    registrationNo: z.string().trim().max(80).optional().nullable(),
     color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).default("#7A4A2B"),
   }).optional().nullable(),
 });
@@ -486,7 +486,7 @@ router.post("/users", async (req, res, next) => {
             clinicId: req.user!.clinicId,
             name: b.fullName,
             specialty: b.professionalProfile.specialty,
-            registrationNo: b.professionalProfile.registrationNo,
+            registrationNo: b.professionalProfile.registrationNo || null,
             color: b.professionalProfile.color,
           },
           select: { id: true },

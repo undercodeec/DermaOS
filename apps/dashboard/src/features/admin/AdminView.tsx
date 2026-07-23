@@ -94,7 +94,7 @@ function ProfessionalsSection() {
                   <tr key={professional.id}>
                     <td><strong>{professional.name}</strong></td>
                     <td>{professional.specialty}</td>
-                    <td>{professional.registrationNo}</td>
+                    <td>{professional.registrationNo || <span className="muted">Pendiente</span>}</td>
                     <td>
                       {professional.users.length
                         ? professional.users.map((user) => user.fullName).join(", ")
@@ -128,15 +128,14 @@ function CreateProfessionalModal({ onClose }: { onClose: () => void }) {
     userId: null,
   });
   const valid = form.name.trim().length >= 2
-    && form.specialty.trim().length >= 2
-    && form.registrationNo.trim().length >= 2;
+    && form.specialty.trim().length >= 2;
 
   const mutation = useMutation({
     mutationFn: () => createProfessional({
       ...form,
       name: form.name.trim(),
       specialty: form.specialty.trim(),
-      registrationNo: form.registrationNo.trim(),
+      registrationNo: form.registrationNo?.trim() || null,
       userId: form.userId || null,
     }),
     onSuccess: () => {
@@ -185,14 +184,14 @@ function CreateProfessionalModal({ onClose }: { onClose: () => void }) {
       </div>
       <div className="frow">
         <Field label="Identificador profesional">
-          <input value={form.registrationNo} onChange={(event) => setForm({ ...form, registrationNo: event.target.value })} placeholder="Registro, cédula o certificación" />
+          <input value={form.registrationNo ?? ""} onChange={(event) => setForm({ ...form, registrationNo: event.target.value })} placeholder="Registro, cédula o certificación (opcional)" />
         </Field>
         <Field label="Color en agenda">
           <input type="color" value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} />
         </Field>
       </div>
       <p className="muted" style={{ fontSize: 12.5 }}>
-        Se mostrará en la receta y puede ser registro oficial, cédula o certificación, según el rol y la normativa aplicable.
+        Es opcional para crear el perfil. Para emitir recetas debe completarse con el identificador exigible al prescriptor.
       </p>
       {mutation.isError ? <p className="form-error">{(mutation.error as Error).message}</p> : null}
     </Modal>
@@ -380,7 +379,6 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
     (!isClinicalRole || !!f.professionalId || (
       !!f.professionalProfile
       && f.professionalProfile.specialty.trim().length >= 2
-      && f.professionalProfile.registrationNo.trim().length >= 2
     ));
 
   const m = useMutation({
@@ -396,7 +394,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
         professionalProfile: isClinicalRole && !f.professionalId && f.professionalProfile ? {
           ...f.professionalProfile,
           specialty: f.professionalProfile.specialty.trim(),
-          registrationNo: f.professionalProfile.registrationNo.trim(),
+          registrationNo: f.professionalProfile.registrationNo?.trim() || null,
         } : null,
       }),
     onSuccess: () => {
@@ -506,7 +504,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
             <input
               value={f.professionalProfile?.registrationNo ?? ""}
               onChange={(e) => setF({ ...f, professionalProfile: { ...(f.professionalProfile ?? { specialty: "Dermatología", registrationNo: "", color: "#7A4A2B" }), registrationNo: e.target.value } })}
-              placeholder="Registro, cédula o certificación"
+              placeholder="Registro, cédula o certificación (opcional)"
             />
           </Field>
         </div>

@@ -107,36 +107,36 @@ enum ReportNoteStatus {
 // =============================================================================
 
 model Clinic {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  ruc       String?
-  publicKey String?  @unique @map("public_key")
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-  invoiceSequence Int @default(242) @map("invoice_sequence")
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String
+  ruc             String?
+  publicKey       String?  @unique @map("public_key")
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  invoiceSequence Int      @default(242) @map("invoice_sequence")
   logoData        String?  @map("logo_data") @db.Text
 
-  users            User[]
-  patients         Patient[]
-  professionals    Professional[]
-  services         Service[]
-  packages         Package[]
-  packageBalances  PackageBalance[]
-  inventory        InventoryItem[]
-  invoices         Invoice[]
-  auditLogs        AuditLog[]
-  consentTemplates ConsentTemplate[]
-  appointments     Appointment[]
-  payments         Payment[]
-  paymentProvider  ClinicPaymentProvider?
-  subscription     ClinicSubscription?
+  users                User[]
+  patients             Patient[]
+  professionals        Professional[]
+  services             Service[]
+  packages             Package[]
+  packageBalances      PackageBalance[]
+  inventory            InventoryItem[]
+  invoices             Invoice[]
+  auditLogs            AuditLog[]
+  consentTemplates     ConsentTemplate[]
+  appointments         Appointment[]
+  payments             Payment[]
+  paymentProvider      ClinicPaymentProvider?
+  subscription         ClinicSubscription?
   subscriptionPayments PlatformSubscriptionPayment[]
-  reportNotes      ReportNote[]
-  clinicalRecords  ClinicalRecord[]
-  photos            Photo[]
-  consents          Consent[]
-  consentEvents     ConsentEvent[]
-  procedures        Procedure[]
+  reportNotes          ReportNote[]
+  clinicalRecords      ClinicalRecord[]
+  photos               Photo[]
+  consents             Consent[]
+  consentEvents        ConsentEvent[]
+  procedures           Procedure[]
 
   @@map("clinics")
 }
@@ -146,28 +146,28 @@ model Clinic {
 // =============================================================================
 
 model User {
-  id             String    @id @default(uuid()) @db.Uuid
-  clinicId       String    @map("clinic_id") @db.Uuid
-  clinic         Clinic    @relation(fields: [clinicId], references: [id])
-  fullName       String    @map("full_name")
-  email          String    @unique
-  passwordHash   String    @map("password_hash")
-  role           Role
-  mfaEnabled     Boolean   @default(false) @map("mfa_enabled")
-  mfaSecret      String?   @map("mfa_secret")
-  emailCodeHash  String?   @map("email_code_hash")
-  emailCodeExpiresAt DateTime? @map("email_code_expires_at") @db.Timestamptz
-  authVersion    Int       @default(0) @map("auth_version")
-  active         Boolean   @default(true)
-  professionalId String?   @map("professional_id") @db.Uuid
-  professional   Professional? @relation(fields: [professionalId], references: [id], onDelete: SetNull)
-  lastAccess     DateTime? @map("last_access") @db.Timestamptz
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  id                 String        @id @default(uuid()) @db.Uuid
+  clinicId           String        @map("clinic_id") @db.Uuid
+  clinic             Clinic        @relation(fields: [clinicId], references: [id])
+  fullName           String        @map("full_name")
+  email              String        @unique
+  passwordHash       String        @map("password_hash")
+  role               Role
+  mfaEnabled         Boolean       @default(false) @map("mfa_enabled")
+  mfaSecret          String?       @map("mfa_secret")
+  emailCodeHash      String?       @map("email_code_hash")
+  emailCodeExpiresAt DateTime?     @map("email_code_expires_at") @db.Timestamptz
+  authVersion        Int           @default(0) @map("auth_version")
+  active             Boolean       @default(true)
+  professionalId     String?       @map("professional_id") @db.Uuid
+  professional       Professional? @relation(fields: [professionalId], references: [id], onDelete: SetNull)
+  lastAccess         DateTime?     @map("last_access") @db.Timestamptz
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz
 
-  auditLogs   AuditLog[]
-  photosTaken Photo[]
-  consentEvents ConsentEvent[]
-  reportNotes   ReportNote[]
+  auditLogs          AuditLog[]
+  photosTaken        Photo[]
+  consentEvents      ConsentEvent[]
+  reportNotes        ReportNote[]
   passwordResetCodes PasswordResetCode[]
 
   @@index([clinicId])
@@ -195,47 +195,47 @@ model Professional {
   clinic         Clinic   @relation(fields: [clinicId], references: [id])
   name           String
   specialty      String   @default("Dermatología")
-  registrationNo String   @map("registration_no")
+  registrationNo String?  @map("registration_no")
   color          String   @default("#7A4A2B")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  users               User[]
-  appointments        Appointment[]
-  clinicalRecords     ClinicalRecord[]
-  procedures          Procedure[]
-  packagesSold        PackageBalance[]    @relation("PackageSeller")
-  redemptions         PackageRedemption[]
+  users           User[]
+  appointments    Appointment[]
+  clinicalRecords ClinicalRecord[]
+  procedures      Procedure[]
+  packagesSold    PackageBalance[]    @relation("PackageSeller")
+  redemptions     PackageRedemption[]
 
-  @@index([clinicId])
   @@unique([id, clinicId], map: "professionals_id_clinic_id_key")
+  @@index([clinicId])
   @@map("professionals")
 }
 
 model Patient {
-  id               String    @id @default(uuid()) @db.Uuid
-  clinicId         String    @map("clinic_id") @db.Uuid
-  clinic           Clinic    @relation(fields: [clinicId], references: [id])
-  firstName        String    @map("first_name")
-  lastName         String    @map("last_name")
-  idType           String    @default("cedula") @map("id_type")
-  idNumber         String    @map("id_number")
-  birthDate        DateTime  @map("birth_date") @db.Date
-  sex              String    // F | M | O
-  email            String?
-  phone            String?
-  city             String?
-  nextAppointment  DateTime? @map("next_appointment") @db.Timestamptz
-  background       Json      @default("{}")
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  id              String    @id @default(uuid()) @db.Uuid
+  clinicId        String    @map("clinic_id") @db.Uuid
+  clinic          Clinic    @relation(fields: [clinicId], references: [id])
+  firstName       String    @map("first_name")
+  lastName        String    @map("last_name")
+  idType          String    @default("cedula") @map("id_type")
+  idNumber        String    @map("id_number")
+  birthDate       DateTime  @map("birth_date") @db.Date
+  sex             String // F | M | O
+  email           String?
+  phone           String?
+  city            String?
+  nextAppointment DateTime? @map("next_appointment") @db.Timestamptz
+  background      Json      @default("{}")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
-  appointments     Appointment[]
-  clinicalRecords  ClinicalRecord[]
-  photos           Photo[]
-  consents         Consent[]
-  procedures       Procedure[]
-  invoices         Invoice[]
-  packageBalances  PackageBalance[]
-  payments         Payment[]
+  appointments    Appointment[]
+  clinicalRecords ClinicalRecord[]
+  photos          Photo[]
+  consents        Consent[]
+  procedures      Procedure[]
+  invoices        Invoice[]
+  packageBalances PackageBalance[]
+  payments        Payment[]
 
   @@unique([clinicId, idType, idNumber])
   @@unique([id, clinicId], map: "patients_id_clinic_id_key")
@@ -259,8 +259,8 @@ model Service {
   procedures   Procedure[]
   packages     Package[]
 
-  @@index([clinicId])
   @@unique([id, clinicId], map: "services_id_clinic_id_key")
+  @@index([clinicId])
   @@map("services")
 }
 
@@ -290,21 +290,21 @@ model Appointment {
 }
 
 model ClinicalRecord {
-  id              String             @id @default(uuid()) @db.Uuid
-  clinicId        String             @map("clinic_id") @db.Uuid
-  clinic          Clinic             @relation(fields: [clinicId], references: [id])
-  patientId       String             @map("patient_id") @db.Uuid
-  patient         Patient            @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade, map: "clinical_records_patient_same_clinic_fkey")
-  professionalId  String             @map("professional_id") @db.Uuid
-  professional    Professional       @relation(fields: [professionalId, clinicId], references: [id, clinicId], map: "clinical_records_professional_same_clinic_fkey")
-  type            ClinicalRecordType
-  date            DateTime           @default(now()) @db.Timestamptz
-  subjective      String?
-  objective       String?
-  assessment      String?
-  plan            String?
-  cie10Codes      String[]           @map("cie10_codes")
-  prescription    Json?
+  id             String             @id @default(uuid()) @db.Uuid
+  clinicId       String             @map("clinic_id") @db.Uuid
+  clinic         Clinic             @relation(fields: [clinicId], references: [id])
+  patientId      String             @map("patient_id") @db.Uuid
+  patient        Patient            @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade, map: "clinical_records_patient_same_clinic_fkey")
+  professionalId String             @map("professional_id") @db.Uuid
+  professional   Professional       @relation(fields: [professionalId, clinicId], references: [id, clinicId], map: "clinical_records_professional_same_clinic_fkey")
+  type           ClinicalRecordType
+  date           DateTime           @default(now()) @db.Timestamptz
+  subjective     String?
+  objective      String?
+  assessment     String?
+  plan           String?
+  cie10Codes     String[]           @map("cie10_codes")
+  prescription   Json?
 
   @@index([clinicId])
   @@index([patientId, date])
@@ -333,72 +333,72 @@ model Photo {
 }
 
 model ConsentTemplate {
-  id            String      @id @default(uuid()) @db.Uuid
-  clinicId      String      @map("clinic_id") @db.Uuid
-  clinic        Clinic      @relation(fields: [clinicId], references: [id])
-  kind          ConsentKind @default(clinico)
+  id            String                @id @default(uuid()) @db.Uuid
+  clinicId      String                @map("clinic_id") @db.Uuid
+  clinic        Clinic                @relation(fields: [clinicId], references: [id])
+  kind          ConsentKind           @default(clinico)
   title         String
-  procedureType String      @map("procedure_type")
+  procedureType String                @map("procedure_type")
   body          String
   status        ConsentTemplateStatus @default(borrador)
-  seriesId      String      @default(dbgenerated("gen_random_uuid()")) @map("series_id") @db.Uuid
-  version       Int         @default(1)
-  sourceName    String?     @map("source_name")
-  sourceMime    String?     @map("source_mime")
-  sourceSha256  String?     @map("source_sha256")
-  sourceFile    Bytes?      @map("source_file")
-  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
-  approvedAt    DateTime?   @map("approved_at") @db.Timestamptz
-  allowedRoles  Role[]      @default([admin, profesional]) @map("allowed_roles")
+  seriesId      String                @default(dbgenerated("gen_random_uuid()")) @map("series_id") @db.Uuid
+  version       Int                   @default(1)
+  sourceName    String?               @map("source_name")
+  sourceMime    String?               @map("source_mime")
+  sourceSha256  String?               @map("source_sha256")
+  sourceFile    Bytes?                @map("source_file")
+  createdAt     DateTime              @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  approvedAt    DateTime?             @map("approved_at") @db.Timestamptz
+  allowedRoles  Role[]                @default([admin, profesional]) @map("allowed_roles")
 
   consents Consent[]
 
-  @@index([clinicId])
   @@unique([id, clinicId], map: "consent_templates_id_clinic_id_key")
   @@unique([clinicId, seriesId, version])
+  @@index([clinicId])
   @@map("consent_templates")
 }
 
 model Consent {
-  id             String          @id @default(uuid()) @db.Uuid
-  clinicId       String          @map("clinic_id") @db.Uuid
-  clinic         Clinic          @relation(fields: [clinicId], references: [id])
-  patientId      String          @map("patient_id") @db.Uuid
-  patient        Patient         @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade, map: "consents_patient_same_clinic_fkey")
-  templateId     String          @map("template_id") @db.Uuid
-  template       ConsentTemplate @relation(fields: [templateId, clinicId], references: [id, clinicId], map: "consents_template_same_clinic_fkey")
-  status         ConsentStatus   @default(pendiente)
-  signedAt       DateTime?       @map("signed_at") @db.Timestamptz
-  signaturePath  String?         @map("signature_path")
-  procedureId    String?         @map("procedure_id") @db.Uuid
-  templateTitle  String?         @map("template_title")
-  templateBody   String?         @map("template_body") @db.Text
-  templateKind   ConsentKind?    @map("template_kind")
-  templateVersion Int?           @map("template_version")
-  signedIp       String?         @map("signed_ip")
-  signedUserAgent String?        @map("signed_user_agent")
-  signedByUserId String?         @map("signed_by_user_id") @db.Uuid
-  signedByUserName String?       @map("signed_by_user_name")
-  patientName    String?         @map("patient_name")
-  patientIdType  String?         @map("patient_id_type")
-  patientIdNumber String?        @map("patient_id_number")
-  patientBirthDate DateTime?     @map("patient_birth_date") @db.Date
-  clinicName     String?         @map("clinic_name")
-  clinicRuc      String?         @map("clinic_ruc")
-  contentHash    String?         @map("content_hash")
-  signatureHash  String?         @map("signature_hash")
-  pdfHash        String?         @map("pdf_hash")
-  finalPdf       Bytes?          @map("final_pdf")
-  revokedAt      DateTime?       @map("revoked_at") @db.Timestamptz
-  revocationReason String?       @map("revocation_reason")
-  revokedByUserId String?        @map("revoked_by_user_id") @db.Uuid
+  id               String          @id @default(uuid()) @db.Uuid
+  clinicId         String          @map("clinic_id") @db.Uuid
+  clinic           Clinic          @relation(fields: [clinicId], references: [id])
+  patientId        String          @map("patient_id") @db.Uuid
+  patient          Patient         @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade, map: "consents_patient_same_clinic_fkey")
+  templateId       String          @map("template_id") @db.Uuid
+  template         ConsentTemplate @relation(fields: [templateId, clinicId], references: [id, clinicId], map: "consents_template_same_clinic_fkey")
+  status           ConsentStatus   @default(pendiente)
+  signedAt         DateTime?       @map("signed_at") @db.Timestamptz
+  signaturePath    String?         @map("signature_path")
+  procedureId      String?         @map("procedure_id") @db.Uuid
+  templateTitle    String?         @map("template_title")
+  templateBody     String?         @map("template_body") @db.Text
+  templateKind     ConsentKind?    @map("template_kind")
+  templateVersion  Int?            @map("template_version")
+  signedIp         String?         @map("signed_ip")
+  signedUserAgent  String?         @map("signed_user_agent")
+  signedByUserId   String?         @map("signed_by_user_id") @db.Uuid
+  signedByUserName String?         @map("signed_by_user_name")
+  patientName      String?         @map("patient_name")
+  patientIdType    String?         @map("patient_id_type")
+  patientIdNumber  String?         @map("patient_id_number")
+  patientBirthDate DateTime?       @map("patient_birth_date") @db.Date
+  clinicName       String?         @map("clinic_name")
+  clinicRuc        String?         @map("clinic_ruc")
+  contentHash      String?         @map("content_hash")
+  signatureHash    String?         @map("signature_hash")
+  pdfHash          String?         @map("pdf_hash")
+  finalPdf         Bytes?          @map("final_pdf")
+  revokedAt        DateTime?       @map("revoked_at") @db.Timestamptz
+  revocationReason String?         @map("revocation_reason")
+  revokedByUserId  String?         @map("revoked_by_user_id") @db.Uuid
 
   events ConsentEvent[]
 
+  @@unique([id, clinicId], map: "consents_id_clinic_id_key")
   @@index([clinicId])
   @@index([patientId])
-  @@unique([id, clinicId], map: "consents_id_clinic_id_key")
   @@map("consents")
 }
 
@@ -419,9 +419,9 @@ model ConsentEvent {
   chainSequence Int              @map("chain_sequence")
   hash          String
 
+  @@unique([consentId, chainSequence])
   @@index([clinicId])
   @@index([consentId, at])
-  @@unique([consentId, chainSequence])
   @@map("consent_events")
 }
 
@@ -484,8 +484,8 @@ model Invoice {
   accessKey    String        @map("access_key")
   status       InvoiceStatus @default(borrador)
 
-  @@index([clinicId])
   @@unique([clinicId, number])
+  @@index([clinicId])
   @@index([date])
   @@index([patientId])
   @@map("invoices")
@@ -506,27 +506,27 @@ model Package {
 
   balances PackageBalance[]
 
-  @@index([clinicId])
   @@unique([id, clinicId], map: "packages_id_clinic_id_key")
+  @@index([clinicId])
   @@map("packages")
 }
 
 model PackageBalance {
-  id                     String               @id @default(uuid()) @db.Uuid
-  clinicId               String               @map("clinic_id") @db.Uuid
-  clinic                 Clinic               @relation(fields: [clinicId], references: [id])
-  patientId              String               @map("patient_id") @db.Uuid
-  patient                Patient              @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade, map: "package_balances_patient_same_clinic_fkey")
-  packageId              String               @map("package_id") @db.Uuid
-  package                Package              @relation(fields: [packageId, clinicId], references: [id, clinicId], map: "package_balances_package_same_clinic_fkey")
-  soldAt                 DateTime             @default(now()) @map("sold_at") @db.Timestamptz
-  sellerProfessionalId   String?              @map("seller_professional_id") @db.Uuid
-  sellerProfessional     Professional?        @relation("PackageSeller", fields: [sellerProfessionalId], references: [id])
-  sessionsTotal          Int                  @map("sessions_total")
-  sessionsUsed           Int                  @default(0) @map("sessions_used")
-  price                  Decimal              @db.Decimal(10, 2)
-  vencimiento            DateTime             @db.Timestamptz
-  status                 PackageBalanceStatus @default(activo)
+  id                   String               @id @default(uuid()) @db.Uuid
+  clinicId             String               @map("clinic_id") @db.Uuid
+  clinic               Clinic               @relation(fields: [clinicId], references: [id])
+  patientId            String               @map("patient_id") @db.Uuid
+  patient              Patient              @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade, map: "package_balances_patient_same_clinic_fkey")
+  packageId            String               @map("package_id") @db.Uuid
+  package              Package              @relation(fields: [packageId, clinicId], references: [id, clinicId], map: "package_balances_package_same_clinic_fkey")
+  soldAt               DateTime             @default(now()) @map("sold_at") @db.Timestamptz
+  sellerProfessionalId String?              @map("seller_professional_id") @db.Uuid
+  sellerProfessional   Professional?        @relation("PackageSeller", fields: [sellerProfessionalId], references: [id])
+  sessionsTotal        Int                  @map("sessions_total")
+  sessionsUsed         Int                  @default(0) @map("sessions_used")
+  price                Decimal              @db.Decimal(10, 2)
+  vencimiento          DateTime             @db.Timestamptz
+  status               PackageBalanceStatus @default(activo)
 
   payments    PackagePayment[]
   redemptions PackageRedemption[]
@@ -537,14 +537,14 @@ model PackageBalance {
 }
 
 model PackagePayment {
-  id        String   @id @default(uuid()) @db.Uuid
-  balanceId String   @map("balance_id") @db.Uuid
+  id        String         @id @default(uuid()) @db.Uuid
+  balanceId String         @map("balance_id") @db.Uuid
   balance   PackageBalance @relation(fields: [balanceId], references: [id], onDelete: Cascade)
-  paymentId String?  @unique @map("payment_id") @db.Uuid
-  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  amount    Decimal  @db.Decimal(10, 2)
+  paymentId String?        @unique @map("payment_id") @db.Uuid
+  payment   Payment?       @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  amount    Decimal        @db.Decimal(10, 2)
   method    String
-  at        DateTime @default(now()) @db.Timestamptz
+  at        DateTime       @default(now()) @db.Timestamptz
   note      String?
 
   @@index([balanceId])
@@ -552,67 +552,67 @@ model PackagePayment {
 }
 
 model PackageRedemption {
-  id              String        @id @default(uuid()) @db.Uuid
-  balanceId       String        @map("balance_id") @db.Uuid
-  balance         PackageBalance @relation(fields: [balanceId], references: [id], onDelete: Cascade)
-  at              DateTime      @default(now()) @db.Timestamptz
-  appointmentId   String?       @unique @map("appointment_id") @db.Uuid
-  appointment     Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
-  professionalId  String?       @map("professional_id") @db.Uuid
-  professional    Professional? @relation(fields: [professionalId], references: [id])
-  note            String?
+  id             String         @id @default(uuid()) @db.Uuid
+  balanceId      String         @map("balance_id") @db.Uuid
+  balance        PackageBalance @relation(fields: [balanceId], references: [id], onDelete: Cascade)
+  at             DateTime       @default(now()) @db.Timestamptz
+  appointmentId  String?        @unique @map("appointment_id") @db.Uuid
+  appointment    Appointment?   @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  professionalId String?        @map("professional_id") @db.Uuid
+  professional   Professional?  @relation(fields: [professionalId], references: [id])
+  note           String?
 
   @@index([balanceId])
   @@map("package_redemptions")
 }
 
 model Payment {
-  id            String         @id @default(uuid()) @db.Uuid
-  clinicId      String         @map("clinic_id") @db.Uuid
-  clinic        Clinic         @relation(fields: [clinicId], references: [id])
-  patientId     String         @map("patient_id") @db.Uuid
-  patient       Patient        @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade, map: "payments_patient_same_clinic_fkey")
-  conceptType   PaymentConcept @map("concept_type")
-  conceptRefId  String?        @map("concept_ref_id") @db.Uuid
-  conceptLabel  String         @map("concept_label")
-  amount        Decimal        @db.Decimal(10, 2)
-  method        String         @default("payphone")
-  status        PaymentStatus  @default(pendiente)
-  payphoneLink  String?        @map("payphone_link")
-  txId          String?        @map("tx_id")
-  clientTransactionId String?   @unique @map("client_transaction_id")
-  payphoneStoreId     String?   @map("payphone_store_id")
-  payphoneTransactionId String? @map("payphone_transaction_id")
-  providerStatus      String?   @map("provider_status")
-  providerPayload     Json?     @map("provider_payload")
-  sentVia       String?        @map("sent_via")
-  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz
-  paidAt        DateTime?      @map("paid_at") @db.Timestamptz
-  note          String?
+  id                    String         @id @default(uuid()) @db.Uuid
+  clinicId              String         @map("clinic_id") @db.Uuid
+  clinic                Clinic         @relation(fields: [clinicId], references: [id])
+  patientId             String         @map("patient_id") @db.Uuid
+  patient               Patient        @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade, map: "payments_patient_same_clinic_fkey")
+  conceptType           PaymentConcept @map("concept_type")
+  conceptRefId          String?        @map("concept_ref_id") @db.Uuid
+  conceptLabel          String         @map("concept_label")
+  amount                Decimal        @db.Decimal(10, 2)
+  method                String         @default("payphone")
+  status                PaymentStatus  @default(pendiente)
+  payphoneLink          String?        @map("payphone_link")
+  txId                  String?        @map("tx_id")
+  clientTransactionId   String?        @unique @map("client_transaction_id")
+  payphoneStoreId       String?        @map("payphone_store_id")
+  payphoneTransactionId String?        @map("payphone_transaction_id")
+  providerStatus        String?        @map("provider_status")
+  providerPayload       Json?          @map("provider_payload")
+  sentVia               String?        @map("sent_via")
+  createdAt             DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  paidAt                DateTime?      @map("paid_at") @db.Timestamptz
+  note                  String?
 
   packagePayment PackagePayment?
 
+  @@unique([payphoneStoreId, payphoneTransactionId])
   @@index([clinicId])
   @@index([patientId])
   @@index([status, createdAt])
   @@index([payphoneStoreId])
-  @@unique([payphoneStoreId, payphoneTransactionId])
   @@map("payments")
 }
 
 model ClinicPaymentProvider {
-  id              String    @id @default(uuid()) @db.Uuid
-  clinicId        String    @unique @map("clinic_id") @db.Uuid
-  clinic          Clinic    @relation(fields: [clinicId], references: [id])
-  provider        String    @default("payphone")
-  mode            String    @default("manual")
-  ruc             String?
-  storeId         String    @map("store_id")
-  tokenEncrypted  String    @map("token_encrypted")
-  status          String    @default("active")
-  lastVerifiedAt  DateTime? @map("last_verified_at") @db.Timestamptz
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  id             String    @id @default(uuid()) @db.Uuid
+  clinicId       String    @unique @map("clinic_id") @db.Uuid
+  clinic         Clinic    @relation(fields: [clinicId], references: [id])
+  provider       String    @default("payphone")
+  mode           String    @default("manual")
+  ruc            String?
+  storeId        String    @map("store_id")
+  tokenEncrypted String    @map("token_encrypted")
+  status         String    @default("active")
+  lastVerifiedAt DateTime? @map("last_verified_at") @db.Timestamptz
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
   @@index([clinicId])
   @@index([provider, status])
@@ -641,48 +641,48 @@ model ClinicSubscription {
 }
 
 model PlatformSubscriptionPayment {
-  id                    String   @id @default(uuid()) @db.Uuid
-  clinicId              String   @map("clinic_id") @db.Uuid
-  clinic                Clinic   @relation(fields: [clinicId], references: [id])
-  amount                Decimal  @db.Decimal(10, 2)
-  months                Int      @default(1)
-  status                String   @default("pendiente")
-  payphoneLink          String?  @map("payphone_link")
-  clientTransactionId   String?  @unique @map("client_transaction_id")
-  payphoneStoreId       String?  @map("payphone_store_id")
-  payphoneTransactionId String?  @map("payphone_transaction_id")
-  providerPayload       Json?    @map("provider_payload")
-  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id                    String    @id @default(uuid()) @db.Uuid
+  clinicId              String    @map("clinic_id") @db.Uuid
+  clinic                Clinic    @relation(fields: [clinicId], references: [id])
+  amount                Decimal   @db.Decimal(10, 2)
+  months                Int       @default(1)
+  status                String    @default("pendiente")
+  payphoneLink          String?   @map("payphone_link")
+  clientTransactionId   String?   @unique @map("client_transaction_id")
+  payphoneStoreId       String?   @map("payphone_store_id")
+  payphoneTransactionId String?   @map("payphone_transaction_id")
+  providerPayload       Json?     @map("provider_payload")
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz
   paidAt                DateTime? @map("paid_at") @db.Timestamptz
   note                  String?
 
+  @@unique([payphoneStoreId, payphoneTransactionId], map: "platform_subscription_payments_payphone_store_id_payphone_trans")
   @@index([clinicId])
   @@index([status, createdAt])
   @@index([payphoneStoreId])
-  @@unique([payphoneStoreId, payphoneTransactionId], map: "platform_subscription_payments_payphone_store_id_payphone_trans")
   @@map("platform_subscription_payments")
 }
 
 model AuditLog {
-  id       String   @id @default(uuid()) @db.Uuid
-  clinicId String   @map("clinic_id") @db.Uuid
-  clinic   Clinic   @relation(fields: [clinicId], references: [id])
-  userId   String?  @map("user_id") @db.Uuid
-  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  action   String
-  cat      String
-  label    String   @default("")
-  at       DateTime @default(now()) @db.Timestamptz
-  ip       String?
-  previousHash String? @map("previous_hash")
-  entryHash    String? @map("entry_hash")
-  chainSequence Int?   @map("chain_sequence")
+  id            String   @id @default(uuid()) @db.Uuid
+  clinicId      String   @map("clinic_id") @db.Uuid
+  clinic        Clinic   @relation(fields: [clinicId], references: [id])
+  userId        String?  @map("user_id") @db.Uuid
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action        String
+  cat           String
+  label         String   @default("")
+  at            DateTime @default(now()) @db.Timestamptz
+  ip            String?
+  previousHash  String?  @map("previous_hash")
+  entryHash     String?  @map("entry_hash")
+  chainSequence Int?     @map("chain_sequence")
 
+  @@unique([clinicId, chainSequence])
   @@index([clinicId])
   @@index([at])
   @@index([userId])
   @@index([cat])
-  @@unique([clinicId, chainSequence])
   @@map("audit_logs")
 }
 

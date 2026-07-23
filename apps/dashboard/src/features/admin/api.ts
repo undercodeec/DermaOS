@@ -20,7 +20,7 @@ export interface AdminProfessional extends Professional {
 export interface NewProfessionalInput {
   name: string;
   specialty: string;
-  registrationNo: string;
+  registrationNo?: string | null;
   color: string;
   userId?: string | null;
 }
@@ -102,7 +102,7 @@ export interface NewAdminUserInput {
   professionalId?: string | null;
   professionalProfile?: {
     specialty: string;
-    registrationNo: string;
+    registrationNo?: string | null;
     color: string;
   } | null;
 }
