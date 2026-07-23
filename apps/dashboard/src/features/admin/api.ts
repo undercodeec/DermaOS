@@ -100,6 +100,11 @@ export interface NewAdminUserInput {
   active?: boolean;
   mfaEnabled?: boolean;
   professionalId?: string | null;
+  professionalProfile?: {
+    specialty: string;
+    registrationNo: string;
+    color: string;
+  } | null;
 }
 
 export interface UpdateAdminUserInput {

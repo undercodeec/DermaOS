@@ -364,6 +364,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
     active: true,
     mfaEnabled: false,
     professionalId: null,
+    professionalProfile: null,
   });
 
   const { data: professionals = [], isLoading: loadingProfessionals } = useQuery({
@@ -375,7 +376,12 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
   const valid =
     f.fullName.trim().length >= 2 &&
     f.email.trim().includes("@") &&
-    f.password.length >= 8;
+    f.password.length >= 8 &&
+    (!isClinicalRole || !!f.professionalId || (
+      !!f.professionalProfile
+      && f.professionalProfile.specialty.trim().length >= 2
+      && f.professionalProfile.registrationNo.trim().length >= 2
+    ));
 
   const m = useMutation({
     mutationFn: () =>
@@ -387,6 +393,11 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
         active: f.active ?? true,
         mfaEnabled: f.mfaEnabled ?? false,
         professionalId: isClinicalRole ? f.professionalId || null : null,
+        professionalProfile: isClinicalRole && !f.professionalId && f.professionalProfile ? {
+          ...f.professionalProfile,
+          specialty: f.professionalProfile.specialty.trim(),
+          registrationNo: f.professionalProfile.registrationNo.trim(),
+        } : null,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-users"] });
@@ -448,6 +459,10 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
                   e.target.value === "profesional" || e.target.value === "esteticista"
                     ? f.professionalId
                     : null,
+                professionalProfile:
+                  e.target.value === "profesional" || e.target.value === "esteticista"
+                    ? f.professionalProfile ?? { specialty: "Dermatología", registrationNo: "", color: "#7A4A2B" }
+                    : null,
               })
             }
           >
@@ -478,9 +493,27 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
           ))}
         </select>
       </Field>
-      {isClinicalRole && professionals.length === 0 && !loadingProfessionals ? (
+      {isClinicalRole && !f.professionalId ? (
+        <div className="frow">
+          <Field label="Especialidad clínica">
+            <input
+              value={f.professionalProfile?.specialty ?? ""}
+              onChange={(e) => setF({ ...f, professionalProfile: { ...(f.professionalProfile ?? { specialty: "", registrationNo: "", color: "#7A4A2B" }), specialty: e.target.value } })}
+              placeholder="Dermatología"
+            />
+          </Field>
+          <Field label="Registro profesional">
+            <input
+              value={f.professionalProfile?.registrationNo ?? ""}
+              onChange={(e) => setF({ ...f, professionalProfile: { ...(f.professionalProfile ?? { specialty: "Dermatología", registrationNo: "", color: "#7A4A2B" }), registrationNo: e.target.value } })}
+              placeholder="Número real del registro"
+            />
+          </Field>
+        </div>
+      ) : null}
+      {isClinicalRole && professionals.length === 0 && !loadingProfessionals && f.professionalId === null ? (
         <p className="muted" style={{ marginTop: 8, fontSize: 12.5 }}>
-          No hay perfiles en el catálogo. Puede guardar este usuario y después crear y vincular su perfil en la sección Profesionales clínicos.
+          Se creará automáticamente el perfil clínico y quedará disponible en Recetas, Evoluciones y Procedimientos.
         </p>
       ) : null}
       <div

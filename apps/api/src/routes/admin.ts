@@ -455,6 +455,11 @@ const createUserSchema = z.object({
   active: z.boolean().default(true),
   mfaEnabled: z.boolean().default(false),
   professionalId: z.string().uuid().optional().nullable(),
+  professionalProfile: z.object({
+    specialty: z.string().trim().min(2).max(120),
+    registrationNo: z.string().trim().min(2).max(80),
+    color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).default("#7A4A2B"),
+  }).optional().nullable(),
 });
 
 router.post("/users", async (req, res, next) => {
@@ -473,28 +478,44 @@ router.post("/users", async (req, res, next) => {
     }
 
     const passwordHash = await bcrypt.hash(b.password, 12);
-    const user = await prisma.user.create({
-      data: {
-        clinicId: req.user!.clinicId,
-        fullName: b.fullName,
-        email,
-        passwordHash,
-        role: b.role,
-        active: b.active,
-        mfaEnabled: b.mfaEnabled,
-        professionalId: b.professionalId || null,
-      },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        role: true,
-        active: true,
-        mfaEnabled: true,
-        professionalId: true,
-        lastAccess: true,
-        createdAt: true,
-      },
+    const user = await prisma.$transaction(async (tx) => {
+      let professionalId = b.professionalId || null;
+      if (!professionalId && (b.role === "profesional" || b.role === "esteticista") && b.professionalProfile) {
+        const professional = await tx.professional.create({
+          data: {
+            clinicId: req.user!.clinicId,
+            name: b.fullName,
+            specialty: b.professionalProfile.specialty,
+            registrationNo: b.professionalProfile.registrationNo,
+            color: b.professionalProfile.color,
+          },
+          select: { id: true },
+        });
+        professionalId = professional.id;
+      }
+      return tx.user.create({
+        data: {
+          clinicId: req.user!.clinicId,
+          fullName: b.fullName,
+          email,
+          passwordHash,
+          role: b.role,
+          active: b.active,
+          mfaEnabled: b.mfaEnabled,
+          professionalId,
+        },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          role: true,
+          active: true,
+          mfaEnabled: true,
+          professionalId: true,
+          lastAccess: true,
+          createdAt: true,
+        },
+      });
     });
 
     await audit(req, "Creo usuario", "sistema", `${user.fullName} · ${user.role}`);
