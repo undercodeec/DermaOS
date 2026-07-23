@@ -187,7 +187,7 @@ function ClinicalFileDocument({ file }: { file: ClinicalFile }) {
 
       <footer className="clinical-file-signature">
         {file.signer ? (
-          <div><span className="clinical-file-sign-line" /><b>{file.signer.name}</b><span>{file.signer.specialty}</span><span>Registro profesional: {file.signer.registrationNo}</span></div>
+          <div><span className="clinical-file-sign-line" /><b>{file.signer.name}</b><span>{file.signer.specialty}</span><span>Identificador profesional: {file.signer.registrationNo}</span></div>
         ) : <p>Documento generado sin profesional firmante seleccionado.</p>}
         <p>Documento confidencial. Generado por DERMA-OS el {dateTime(file.generatedAt)}.</p>
       </footer>

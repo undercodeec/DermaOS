@@ -85,7 +85,7 @@ function PrescriptionDocumentView({ document }: { document: PrescriptionDocument
           <span />
           <strong>{document.professional.name}</strong>
           <small>{document.professional.specialty}</small>
-          <small>Registro profesional: {document.professional.registrationNo}</small>
+          <small>Identificador profesional: {document.professional.registrationNo}</small>
         </div>
         <p>Documento emitido desde DERMA-OS. Conserve esta receta durante el tratamiento.</p>
       </footer>

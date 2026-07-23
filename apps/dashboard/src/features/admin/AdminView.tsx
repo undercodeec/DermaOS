@@ -87,7 +87,7 @@ function ProfessionalsSection() {
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
               <thead>
-                <tr><th>Profesional</th><th>Especialidad</th><th>Registro</th><th>Usuario vinculado</th></tr>
+                <tr><th>Profesional</th><th>Especialidad</th><th>Identificador</th><th>Usuario vinculado</th></tr>
               </thead>
               <tbody>
                 {professionals.map((professional: AdminProfessional) => (
@@ -184,15 +184,15 @@ function CreateProfessionalModal({ onClose }: { onClose: () => void }) {
         </Field>
       </div>
       <div className="frow">
-        <Field label="Registro profesional">
-          <input value={form.registrationNo} onChange={(event) => setForm({ ...form, registrationNo: event.target.value })} placeholder="Número real del registro" />
+        <Field label="Identificador profesional">
+          <input value={form.registrationNo} onChange={(event) => setForm({ ...form, registrationNo: event.target.value })} placeholder="Registro, cédula o certificación" />
         </Field>
         <Field label="Color en agenda">
           <input type="color" value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} />
         </Field>
       </div>
       <p className="muted" style={{ fontSize: 12.5 }}>
-        El registro profesional se mostrará en la receta entregada al paciente. Use el número real; DERMA-OS no lo completa automáticamente.
+        Se mostrará en la receta y puede ser registro oficial, cédula o certificación, según el rol y la normativa aplicable.
       </p>
       {mutation.isError ? <p className="form-error">{(mutation.error as Error).message}</p> : null}
     </Modal>
@@ -502,11 +502,11 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
               placeholder="Dermatología"
             />
           </Field>
-          <Field label="Registro profesional">
+          <Field label="Identificador profesional">
             <input
               value={f.professionalProfile?.registrationNo ?? ""}
               onChange={(e) => setF({ ...f, professionalProfile: { ...(f.professionalProfile ?? { specialty: "Dermatología", registrationNo: "", color: "#7A4A2B" }), registrationNo: e.target.value } })}
-              placeholder="Número real del registro"
+              placeholder="Registro, cédula o certificación"
             />
           </Field>
         </div>
