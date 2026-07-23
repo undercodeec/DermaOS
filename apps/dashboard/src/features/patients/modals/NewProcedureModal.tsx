@@ -11,7 +11,12 @@ import type { Patient } from "@/lib/types";
 export function NewProcedureModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { data: profs = [] } = useQuery({ queryKey: ["professionals"], queryFn: listProfessionals });
+  const professionalsQuery = useQuery({
+    queryKey: ["professionals"],
+    queryFn: listProfessionals,
+    refetchOnMount: "always",
+  });
+  const profs = professionalsQuery.data ?? [];
   const { data: services = [] } = useQuery({ queryKey: ["services"], queryFn: listServices });
   const { data: signedConsents = [] } = useQuery({
     queryKey: ["consents-signed", patient.id],
@@ -88,7 +93,13 @@ export function NewProcedureModal({ patient, onClose }: { patient: Patient; onCl
           <select
             value={f.professionalId}
             onChange={(e) => setF({ ...f, professionalId: e.target.value })}
+            disabled={professionalsQuery.isPending || professionalsQuery.isError || profs.length === 0}
           >
+            {professionalsQuery.isPending ? <option value="">Cargando profesionales…</option> : null}
+            {professionalsQuery.isError ? <option value="">No se pudo cargar la lista</option> : null}
+            {!professionalsQuery.isPending && !professionalsQuery.isError && profs.length === 0 ? (
+              <option value="">No hay perfiles profesionales</option>
+            ) : null}
             {profs.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -97,6 +108,20 @@ export function NewProcedureModal({ patient, onClose }: { patient: Patient; onCl
           </select>
         </Field>
       </div>
+      {professionalsQuery.isError ? (
+        <p className="form-error">
+          No se pudieron consultar los profesionales: {(professionalsQuery.error as Error).message}.{" "}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void professionalsQuery.refetch()}>
+            Reintentar
+          </button>
+        </p>
+      ) : null}
+      {!professionalsQuery.isPending && !professionalsQuery.isError && profs.length === 0 ? (
+        <p className="form-error">
+          No existen perfiles profesionales clínicos para esta clínica. Un administrador debe crearlos en
+          Sistema → Profesionales clínicos.
+        </p>
+      ) : null}
 
       {signedConsents.length === 0 ? (
         <div
