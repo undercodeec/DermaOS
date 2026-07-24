@@ -196,6 +196,7 @@ model Professional {
   name           String
   specialty      String   @default("Dermatología")
   registrationNo String?  @map("registration_no")
+  identifierType String   @default("otro") @map("identifier_type")
   color          String   @default("#7A4A2B")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
 

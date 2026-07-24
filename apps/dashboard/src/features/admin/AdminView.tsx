@@ -26,6 +26,14 @@ import type {
 } from "./api";
 import { ConsentTemplatesSettings } from "./ConsentTemplatesSettings";
 
+const IDENTIFIER_TYPES = {
+  acess_msp: "Registro ACESS/MSP",
+  cedula: "Cédula",
+  certificacion: "Certificación",
+  otro: "Otro",
+} as const;
+type IdentifierType = keyof typeof IDENTIFIER_TYPES;
+
 export function AdminView() {
   const { profile } = useAuth();
   const role = profile?.role ?? "admin";
@@ -124,6 +132,7 @@ function CreateProfessionalModal({ onClose }: { onClose: () => void }) {
     name: "",
     specialty: "Dermatología",
     registrationNo: "",
+    identifierType: "otro",
     color: "#7A4A2B",
     userId: null,
   });
@@ -183,9 +192,16 @@ function CreateProfessionalModal({ onClose }: { onClose: () => void }) {
         </Field>
       </div>
       <div className="frow">
-        <Field label="Identificador profesional">
+        <Field label="Tipo de identificador">
+          <select value={form.identifierType} onChange={(event) => setForm({ ...form, identifierType: event.target.value as NewProfessionalInput["identifierType"] })}>
+            {Object.entries(IDENTIFIER_TYPES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </Field>
+        <Field label="Número o código del identificador">
           <input value={form.registrationNo ?? ""} onChange={(event) => setForm({ ...form, registrationNo: event.target.value })} placeholder="Registro, cédula o certificación (opcional)" />
         </Field>
+      </div>
+      <div className="frow">
         <Field label="Color en agenda">
           <input type="color" value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} />
         </Field>
@@ -459,7 +475,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
                     : null,
                 professionalProfile:
                   e.target.value === "profesional" || e.target.value === "esteticista"
-                    ? f.professionalProfile ?? { specialty: "Dermatología", registrationNo: "", color: "#7A4A2B" }
+                    ? f.professionalProfile ?? { specialty: "Dermatología", registrationNo: "", identifierType: "otro", color: "#7A4A2B" }
                     : null,
               })
             }
@@ -492,22 +508,34 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
         </select>
       </Field>
       {isClinicalRole && !f.professionalId ? (
+        <>
         <div className="frow">
           <Field label="Especialidad clínica">
             <input
               value={f.professionalProfile?.specialty ?? ""}
-              onChange={(e) => setF({ ...f, professionalProfile: { ...(f.professionalProfile ?? { specialty: "", registrationNo: "", color: "#7A4A2B" }), specialty: e.target.value } })}
+              onChange={(e) => setF({ ...f, professionalProfile: { ...(f.professionalProfile ?? { specialty: "", registrationNo: "", identifierType: "otro", color: "#7A4A2B" }), specialty: e.target.value } })}
               placeholder="Dermatología"
             />
           </Field>
-          <Field label="Identificador profesional">
+          <Field label="Tipo de identificador">
+            <select
+              value={f.professionalProfile?.identifierType ?? "otro"}
+              onChange={(e) => setF({ ...f, professionalProfile: { ...(f.professionalProfile ?? { specialty: "Dermatología", registrationNo: "", identifierType: "otro", color: "#7A4A2B" }), identifierType: e.target.value as IdentifierType } })}
+            >
+              {Object.entries(IDENTIFIER_TYPES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </Field>
+        </div>
+        <div className="frow">
+          <Field label="Número o código del identificador">
             <input
               value={f.professionalProfile?.registrationNo ?? ""}
-              onChange={(e) => setF({ ...f, professionalProfile: { ...(f.professionalProfile ?? { specialty: "Dermatología", registrationNo: "", color: "#7A4A2B" }), registrationNo: e.target.value } })}
+              onChange={(e) => setF({ ...f, professionalProfile: { ...(f.professionalProfile ?? { specialty: "Dermatología", registrationNo: "", identifierType: "otro", color: "#7A4A2B" }), registrationNo: e.target.value } })}
               placeholder="Registro, cédula o certificación (opcional)"
             />
           </Field>
         </div>
+        </>
       ) : null}
       {isClinicalRole && professionals.length === 0 && !loadingProfessionals && f.professionalId === null ? (
         <p className="muted" style={{ marginTop: 8, fontSize: 12.5 }}>
@@ -562,13 +590,39 @@ function EditUserModal({ user, onClose }: { user: AdminUser; onClose: () => void
     queryKey: ["admin-professionals"],
     queryFn: listAdminProfessionals,
   });
+  const [profileDraft, setProfileDraft] = useState<NonNullable<UpdateAdminUserInput["professionalProfile"]> | null>(null);
 
   const role = f.role ?? user.role;
   const isClinicalRole = role === "profesional" || role === "esteticista";
+  useEffect(() => {
+    if (!isClinicalRole) {
+      setProfileDraft(null);
+      return;
+    }
+    const selected = professionals.find((professional) => professional.id === f.professionalId);
+    if (selected) {
+      setProfileDraft({
+        name: selected.name,
+        specialty: selected.specialty,
+        registrationNo: selected.registrationNo,
+        identifierType: selected.identifierType,
+        color: selected.color,
+      });
+    } else if (!f.professionalId) {
+      setProfileDraft((current) => current ?? {
+        name: user.fullName,
+        specialty: "Dermatología",
+        registrationNo: "",
+        identifierType: "otro",
+        color: "#7A4A2B",
+      });
+    }
+  }, [f.professionalId, isClinicalRole, professionals, user.fullName]);
   const valid =
     (f.fullName ?? "").trim().length >= 2 &&
     (f.email ?? "").trim().includes("@") &&
-    (!f.password || f.password.length >= 8);
+    (!f.password || f.password.length >= 8) &&
+    (!isClinicalRole || !!profileDraft?.name.trim() && !!profileDraft.specialty.trim());
 
   const m = useMutation({
     mutationFn: () => {
@@ -579,6 +633,12 @@ function EditUserModal({ user, onClose }: { user: AdminUser; onClose: () => void
         active: f.active,
         mfaEnabled: f.mfaEnabled,
         professionalId: isClinicalRole ? f.professionalId || null : null,
+        professionalProfile: isClinicalRole && profileDraft ? {
+          ...profileDraft,
+          name: profileDraft.name.trim(),
+          specialty: profileDraft.specialty.trim(),
+          registrationNo: profileDraft.registrationNo?.trim() || null,
+        } : null,
       };
       if (f.password) input.password = f.password;
       return patchUser(user.id, input);
@@ -656,7 +716,24 @@ function EditUserModal({ user, onClose }: { user: AdminUser; onClose: () => void
       <Field label={isClinicalRole ? "Profesional asociado (opcional)" : "Profesional asociado"}>
         <select
           value={f.professionalId ?? ""}
-          onChange={(e) => setF({ ...f, professionalId: e.target.value || null })}
+          onChange={(e) => {
+            const professionalId = e.target.value || null;
+            setF({ ...f, professionalId });
+            const selected = professionals.find((professional) => professional.id === professionalId);
+            setProfileDraft(selected ? {
+              name: selected.name,
+              specialty: selected.specialty,
+              registrationNo: selected.registrationNo,
+              identifierType: selected.identifierType,
+              color: selected.color,
+            } : {
+              name: user.fullName,
+              specialty: "Dermatología",
+              registrationNo: "",
+              identifierType: "otro",
+              color: "#7A4A2B",
+            });
+          }}
           disabled={!isClinicalRole || loadingProfessionals}
         >
           <option value="">
@@ -669,6 +746,31 @@ function EditUserModal({ user, onClose }: { user: AdminUser; onClose: () => void
           ))}
         </select>
       </Field>
+      {isClinicalRole && profileDraft ? (
+        <>
+          <div className="frow">
+            <Field label="Nombre visible en documentos">
+              <input value={profileDraft.name} onChange={(e) => setProfileDraft({ ...profileDraft, name: e.target.value })} />
+            </Field>
+            <Field label="Especialidad o función clínica">
+              <input value={profileDraft.specialty} onChange={(e) => setProfileDraft({ ...profileDraft, specialty: e.target.value })} />
+            </Field>
+          </div>
+          <div className="frow">
+            <Field label="Tipo de identificador">
+              <select value={profileDraft.identifierType} onChange={(e) => setProfileDraft({ ...profileDraft, identifierType: e.target.value as IdentifierType })}>
+                {Object.entries(IDENTIFIER_TYPES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </Field>
+            <Field label="Número o código del identificador">
+              <input value={profileDraft.registrationNo ?? ""} onChange={(e) => setProfileDraft({ ...profileDraft, registrationNo: e.target.value })} placeholder="Opcional; obligatorio para emitir recetas" />
+            </Field>
+          </div>
+          <Field label="Color en agenda">
+            <input type="color" value={profileDraft.color} onChange={(e) => setProfileDraft({ ...profileDraft, color: e.target.value })} />
+          </Field>
+        </>
+      ) : null}
       <div
         style={{
           display: "grid",

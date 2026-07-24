@@ -279,7 +279,8 @@ export interface Professional {
   id: string;
   name: string;
   specialty: string;
-  registrationNo: string;
+  registrationNo: string | null;
+  identifierType: "acess_msp" | "cedula" | "certificacion" | "otro";
   color: string;
 }
 

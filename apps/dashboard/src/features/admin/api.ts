@@ -21,6 +21,7 @@ export interface NewProfessionalInput {
   name: string;
   specialty: string;
   registrationNo?: string | null;
+  identifierType: "acess_msp" | "cedula" | "certificacion" | "otro";
   color: string;
   userId?: string | null;
 }
@@ -103,6 +104,7 @@ export interface NewAdminUserInput {
   professionalProfile?: {
     specialty: string;
     registrationNo?: string | null;
+    identifierType: "acess_msp" | "cedula" | "certificacion" | "otro";
     color: string;
   } | null;
 }
@@ -115,6 +117,13 @@ export interface UpdateAdminUserInput {
   active?: boolean;
   mfaEnabled?: boolean;
   professionalId?: string | null;
+  professionalProfile?: {
+    name: string;
+    specialty: string;
+    registrationNo?: string | null;
+    identifierType: "acess_msp" | "cedula" | "certificacion" | "otro";
+    color: string;
+  } | null;
 }
 
 export function createUser(input: NewAdminUserInput): Promise<AdminUser> {

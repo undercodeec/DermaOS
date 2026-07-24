@@ -52,6 +52,32 @@ function emptyItem(): RxItem {
   };
 }
 
+function HelpLabel({ text, help }: { text: string; help: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      {text}
+      <span
+        aria-label={`Ayuda: ${help}`}
+        title={help}
+        style={{
+          display: "inline-grid",
+          placeItems: "center",
+          width: 17,
+          height: 17,
+          borderRadius: "50%",
+          background: "var(--info-bg)",
+          color: "var(--info)",
+          fontSize: 11,
+          fontWeight: 800,
+          cursor: "help",
+        }}
+      >
+        !
+      </span>
+    </span>
+  );
+}
+
 export function NewRecetaModal({
   patient,
   onClose,
@@ -93,8 +119,12 @@ export function NewRecetaModal({
       ingredients: items[i].ingredients.map((g, k) => (k === j ? { ...g, ...patch } : g)),
     });
 
+  const selectedProfessional = profs.find((professional) => professional.id === professionalId);
   const valid =
-    professionalId && items.some((it) => it.ingredients.some((g) => g.name.trim()) && it.instructions.trim());
+    professionalId
+    && selectedProfessional?.identifierType === "acess_msp"
+    && !!selectedProfessional.registrationNo
+    && items.some((it) => it.ingredients.some((g) => g.name.trim()) && it.instructions.trim());
 
   const m = useMutation({
     mutationFn: () => {
@@ -137,7 +167,7 @@ export function NewRecetaModal({
       }
     >
       <div className="frow">
-        <Field label="Profesional">
+        <Field label={<HelpLabel text="Profesional que emite la receta" help="Selecciona al profesional responsable de la prescripción. Para emitirla debe tener un identificador profesional registrado." />}>
           <select
             value={professionalId}
             onChange={(e) => setProfessionalId(e.target.value)}
@@ -156,7 +186,7 @@ export function NewRecetaModal({
           </select>
         </Field>
         {!edit ? (
-          <Field label="Desde plantilla">
+          <Field label={<HelpLabel text="Plantilla de receta" help="Opcional. Completa automáticamente una fórmula frecuente y luego puedes modificarla." />}>
             <select value={templateId} onChange={(e) => pickTemplate(e.target.value)}>
               <option value="">— Receta en blanco —</option>
               {RX_TEMPLATES.map((t) => (
@@ -182,15 +212,20 @@ export function NewRecetaModal({
           Sistema → Profesionales clínicos; crear solamente un usuario con rol Profesional no llena este selector.
         </p>
       ) : null}
+      {professionalId && (selectedProfessional?.identifierType !== "acess_msp" || !selectedProfessional.registrationNo) ? (
+        <p className="form-error">
+          El profesional seleccionado todavía no tiene Registro ACESS/MSP. Complétalo en Sistema antes de emitir la receta.
+        </p>
+      ) : null}
       <div className="frow">
-        <Field label="Diagnóstico o motivo">
+        <Field label={<HelpLabel text="Diagnóstico o motivo de atención" help="Describe brevemente la condición tratada o el motivo clínico de esta receta." />}>
           <input
             value={diagnosis}
             placeholder="Ej. Acné vulgar"
             onChange={(e) => setDiagnosis(e.target.value)}
           />
         </Field>
-        <Field label="Advertencias generales">
+        <Field label={<HelpLabel text="Advertencias para el paciente" help="Incluye alergias relevantes, señales de alarma, precauciones o cuándo suspender el tratamiento." />}>
           <input
             value={warnings}
             placeholder="Ej. Suspender ante irritación intensa"
@@ -203,7 +238,7 @@ export function NewRecetaModal({
         {items.map((it, i) => (
           <div key={i} className="rx-card" style={{ background: "var(--bg-subtle)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <strong style={{ fontSize: 13.5 }}>Fórmula {i + 1}</strong>
+              <strong style={{ fontSize: 13.5 }}>Medicamento o fórmula {i + 1}</strong>
               {items.length > 1 ? (
                 <Btn sm kind="ghost" icon="trash" onClick={() => setItems(items.filter((_, k) => k !== i))}>
                   Quitar
@@ -211,19 +246,25 @@ export function NewRecetaModal({
               ) : null}
             </div>
             {it.ingredients.map((g, j) => (
-              <div key={j} style={{ display: "grid", gridTemplateColumns: "1fr 110px 34px", gap: 8, marginBottom: 8 }}>
-                <input
-                  value={g.name}
-                  placeholder="Principio activo"
-                  onChange={(e) => updIng(i, j, { name: e.target.value })}
-                  style={{ border: "1px solid var(--border-strong)", borderRadius: 7, padding: "7px 10px" }}
-                />
-                <input
-                  value={g.concentration}
-                  placeholder="Conc."
-                  onChange={(e) => updIng(i, j, { concentration: e.target.value })}
-                  style={{ border: "1px solid var(--border-strong)", borderRadius: 7, padding: "7px 10px" }}
-                />
+              <div key={j} style={{ display: "grid", gridTemplateColumns: "1fr 150px 34px", gap: 8, marginBottom: 8, alignItems: "end" }}>
+                <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                  <HelpLabel text="Medicamento o principio activo" help="Escribe el nombre genérico, comercial o cada componente de una fórmula magistral." />
+                  <input
+                    value={g.name}
+                    placeholder="Ej. adapaleno"
+                    onChange={(e) => updIng(i, j, { name: e.target.value })}
+                    style={{ border: "1px solid var(--border-strong)", borderRadius: 7, padding: "7px 10px" }}
+                  />
+                </label>
+                <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                  <HelpLabel text="Concentración" help="Indica la potencia del medicamento, por ejemplo 0.1%, 500 mg o 10 mg/ml." />
+                  <input
+                    value={g.concentration}
+                    placeholder="Ej. 0.1%"
+                    onChange={(e) => updIng(i, j, { concentration: e.target.value })}
+                    style={{ border: "1px solid var(--border-strong)", borderRadius: 7, padding: "7px 10px" }}
+                  />
+                </label>
                 <button
                   className="mclose"
                   title="Quitar principio activo"
@@ -244,14 +285,14 @@ export function NewRecetaModal({
               Principio activo
             </Btn>
             <div className="frow" style={{ marginTop: 10 }}>
-              <Field label="Vehículo">
+              <Field label={<HelpLabel text="Forma farmacéutica o base" help="Indica cómo se presenta: crema, gel, loción, cápsula, solución o base magistral." />}>
                 <input
                   value={it.vehicle}
                   placeholder="gel, crema base…"
                   onChange={(e) => updItem(i, { vehicle: e.target.value })}
                 />
               </Field>
-              <Field label="Cantidad">
+              <Field label={<HelpLabel text="Cantidad a entregar" help="Especifica la cantidad total: 30 g, 20 tabletas, 1 frasco, etc." />}>
                 <input
                   value={it.quantity}
                   placeholder="30 g"
@@ -260,21 +301,21 @@ export function NewRecetaModal({
               </Field>
             </div>
             <div className="frow">
-              <Field label="Dosis">
+              <Field label={<HelpLabel text="Dosis por toma o aplicación" help="Cantidad que debe usar cada vez, por ejemplo una cápsula o una capa fina." />}>
                 <input
                   value={it.dosage ?? ""}
                   placeholder="Ej. una cápsula"
                   onChange={(e) => updItem(i, { dosage: e.target.value })}
                 />
               </Field>
-              <Field label="Frecuencia">
+              <Field label={<HelpLabel text="Cada cuánto usar" help="Frecuencia de uso: cada 12 horas, una vez al día, tres veces por semana, etc." />}>
                 <input
                   value={it.frequency ?? ""}
                   placeholder="Ej. cada 12 horas"
                   onChange={(e) => updItem(i, { frequency: e.target.value })}
                 />
               </Field>
-              <Field label="Duración">
+              <Field label={<HelpLabel text="Tiempo de tratamiento" help="Duración total del tratamiento, por ejemplo 7 días, 4 semanas o hasta el próximo control." />}>
                 <input
                   value={it.duration ?? ""}
                   placeholder="Ej. 7 días"
@@ -282,7 +323,7 @@ export function NewRecetaModal({
                 />
               </Field>
             </div>
-            <Field label="Instrucciones de uso">
+            <Field label={<HelpLabel text="Cómo usar el medicamento" help="Explica dónde, cuándo y cómo aplicarlo o tomarlo, incluyendo cuidados adicionales." />}>
               <textarea
                 rows={2}
                 value={it.instructions}

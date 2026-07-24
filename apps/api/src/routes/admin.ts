@@ -340,6 +340,7 @@ const professionalSchema = z.object({
   name: z.string().trim().min(2).max(160),
   specialty: z.string().trim().min(2).max(120),
   registrationNo: z.string().trim().max(80).optional().nullable(),
+  identifierType: z.enum(["acess_msp", "cedula", "certificacion", "otro"]).default("otro"),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).default("#7A4A2B"),
   userId: z.string().uuid().optional().nullable(),
 });
@@ -349,6 +350,7 @@ const adminProfessionalSelect = {
   name: true,
   specialty: true,
   registrationNo: true,
+  identifierType: true,
   color: true,
   users: {
     select: { id: true, fullName: true, email: true, role: true },
@@ -391,6 +393,7 @@ router.post("/professionals", async (req, res, next) => {
           name: body.name,
           specialty: body.specialty,
           registrationNo: body.registrationNo,
+          identifierType: body.identifierType,
           color: body.color,
         },
       });
@@ -458,6 +461,7 @@ const createUserSchema = z.object({
   professionalProfile: z.object({
     specialty: z.string().trim().min(2).max(120),
     registrationNo: z.string().trim().max(80).optional().nullable(),
+    identifierType: z.enum(["acess_msp", "cedula", "certificacion", "otro"]).default("otro"),
     color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).default("#7A4A2B"),
   }).optional().nullable(),
 });
@@ -487,6 +491,7 @@ router.post("/users", async (req, res, next) => {
             name: b.fullName,
             specialty: b.professionalProfile.specialty,
             registrationNo: b.professionalProfile.registrationNo || null,
+            identifierType: b.professionalProfile.identifierType,
             color: b.professionalProfile.color,
           },
           select: { id: true },
@@ -537,6 +542,13 @@ const patchUserSchema = z.object({
   mfaEnabled: z.boolean().optional(),
   role: z.enum(["admin", "recepcion", "profesional", "esteticista", "contador"]).optional(),
   professionalId: z.string().uuid().optional().nullable(),
+  professionalProfile: z.object({
+    name: z.string().trim().min(2).max(160),
+    specialty: z.string().trim().min(2).max(120),
+    registrationNo: z.string().trim().max(80).optional().nullable(),
+    identifierType: z.enum(["acess_msp", "cedula", "certificacion", "otro"]),
+    color: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+  }).optional().nullable(),
 });
 
 router.patch("/users/:id", async (req, res, next) => {
@@ -580,29 +592,59 @@ router.patch("/users/:id", async (req, res, next) => {
       || (b.role && b.role !== cur.role)
       || (b.professionalId !== undefined && b.professionalId !== cur.professionalId),
     );
-    const u = await prisma.user.update({
-      where: { id: cur.id },
-      data: {
-        fullName: b.fullName ?? cur.fullName,
-        email: email ?? cur.email,
-        ...(passwordHash ? { passwordHash } : {}),
-        active: b.active ?? cur.active,
-        mfaEnabled: b.mfaEnabled ?? cur.mfaEnabled,
-        role: b.role ?? cur.role,
-        professionalId: b.professionalId !== undefined ? b.professionalId || null : cur.professionalId,
-        ...(invalidatesSessions ? { authVersion: { increment: 1 } } : {}),
-      },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        role: true,
-        active: true,
-        mfaEnabled: true,
-        professionalId: true,
-        lastAccess: true,
-        createdAt: true,
-      },
+    const u = await prisma.$transaction(async (tx) => {
+      const targetRole = b.role ?? cur.role;
+      const clinicalRole = targetRole === "profesional" || targetRole === "esteticista";
+      let professionalId = b.professionalId !== undefined ? b.professionalId || null : cur.professionalId;
+
+      if (clinicalRole && b.professionalProfile) {
+        const profileData = {
+          name: b.professionalProfile.name,
+          specialty: b.professionalProfile.specialty,
+          registrationNo: b.professionalProfile.registrationNo || null,
+          identifierType: b.professionalProfile.identifierType,
+          color: b.professionalProfile.color,
+        };
+        if (professionalId) {
+          const updated = await tx.professional.updateMany({
+            where: { id: professionalId, clinicId: req.user!.clinicId },
+            data: profileData,
+          });
+          if (updated.count !== 1) throw badRequest("Profesional no valido para esta clinica");
+        } else {
+          const created = await tx.professional.create({
+            data: { clinicId: req.user!.clinicId, ...profileData },
+            select: { id: true },
+          });
+          professionalId = created.id;
+        }
+      }
+      if (!clinicalRole) professionalId = null;
+
+      return tx.user.update({
+        where: { id: cur.id },
+        data: {
+          fullName: b.fullName ?? cur.fullName,
+          email: email ?? cur.email,
+          ...(passwordHash ? { passwordHash } : {}),
+          active: b.active ?? cur.active,
+          mfaEnabled: b.mfaEnabled ?? cur.mfaEnabled,
+          role: targetRole,
+          professionalId,
+          ...(invalidatesSessions || professionalId !== cur.professionalId ? { authVersion: { increment: 1 } } : {}),
+        },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          role: true,
+          active: true,
+          mfaEnabled: true,
+          professionalId: true,
+          lastAccess: true,
+          createdAt: true,
+        },
+      });
     });
 
     const changes: string[] = [];
@@ -613,6 +655,7 @@ router.patch("/users/:id", async (req, res, next) => {
     if (b.mfaEnabled !== undefined && b.mfaEnabled !== cur.mfaEnabled) changes.push(`MFA ${b.mfaEnabled ? "activado" : "desactivado"}`);
     if (b.role && b.role !== cur.role) changes.push(`rol → ${b.role}`);
     if (b.professionalId !== undefined && b.professionalId !== cur.professionalId) changes.push("profesional actualizado");
+    if (b.professionalProfile) changes.push("perfil profesional actualizado");
     if (changes.length) {
       await audit(req, "Modificó permisos de usuario", "sistema", `${cur.fullName} · ${changes.join(", ")}`);
     }

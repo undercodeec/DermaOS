@@ -44,11 +44,11 @@ async function ensureProfessionalForClinic(professionalId: string, clinicId: str
 async function ensureProfessionalCanPrescribe(professionalId: string, clinicId: string) {
   const professional = await prisma.professional.findFirst({
     where: { id: professionalId, clinicId },
-    select: { registrationNo: true },
+    select: { registrationNo: true, identifierType: true },
   });
   if (!professional) throw badRequest("Profesional no valido para esta clinica");
-  if (!professional.registrationNo?.trim()) {
-    throw badRequest("Completa el identificador profesional antes de emitir una receta");
+  if (professional.identifierType !== "acess_msp" || !professional.registrationNo?.trim()) {
+    throw badRequest("Configura el Registro ACESS/MSP del profesional antes de emitir una receta");
   }
 }
 
