@@ -1,5 +1,183 @@
 # 📋 ESTADO DEL PROYECTO — DERMA-OS
-> Ultima actualizacion: 2026-07-23 (receta imprimible, perfiles profesionales y flujo guiado de consentimientos)
+> Ultima actualizacion: 2026-07-23 (perfiles profesionales, recetas y visibilidad real de auditoria)
+
+---
+
+## Documento rector y alcance oficial del primer MVP
+
+Esta seccion es la **fuente principal para reanudar el desarrollo**. La investigacion historica aporta necesidades y recomendaciones, pero no decide por si sola el alcance. Las decisiones expresas del propietario registradas aqui prevalecen cuando exista una diferencia.
+
+### Decisiones de alcance confirmadas
+
+- La integracion real de **facturacion electronica SRI** no forma parte de este primer MVP completo. El flujo interno/simulado no tiene validez tributaria y debe permanecer identificado como tal o deshabilitado. La integracion con partner, firma, XML, RIDE y autorizacion SRI queda para una implementacion futura y **no bloquea el cierre de este MVP**.
+- El **sitio web publico/comercial** tampoco forma parte de este MVP. No se desarrollaran landing pages, SEO, blog, galeria publica ni formularios publicos de captacion. `.claude/docs_historicos/PROYECTO_SITIO_DERMATOLOGIA.md` se conserva solo como antecedente historico.
+- El **CRM interno** no es esencial para el MVP actual y queda diferido como implementacion futura. No debe crearse en esta etapa ningun modulo de prospectos, pipeline, campañas o conversion comercial.
+- La integracion de **WhatsApp Business** tampoco forma parte del MVP actual. No se implementaran Meta Cloud API, BSP, Embedded Signup, plantillas, webhooks ni mensajes automaticos. La agenda y los cobros funcionaran sin depender de WhatsApp.
+- Los demas faltantes clinicos y operativos incluidos en la tabla siguiente forman parte del **MVP actual completo**, aunque se implementen y validen en entregas consecutivas.
+- Integraciones de laboratorio/farmacia, HL7/FHIR, IA diagnostica, aplicacion movil nativa y white-label avanzado continúan como evoluciones posteriores; la investigacion original ya las clasifica como `nice-to-have` o fase enterprise.
+
+### Backlog futuro que no bloquea el MVP actual
+
+| Implementacion futura | Decision vigente |
+|---|---|
+| Facturacion electronica SRI | Conservar el flujo interno claramente rotulado como no tributario; integrar partner/firma/XML/RIDE/autorizacion solo cuando el propietario reactive este bloque |
+| Sitio publico | No crear aplicacion, landing, SEO, blog, galeria ni formularios publicos dentro del MVP actual |
+| CRM interno | No crear modelos, endpoints, permisos, pipeline ni reportes de prospectos en el MVP actual |
+| WhatsApp Business | No crear Meta App, BSP, Embedded Signup, credenciales por clinica, outbox, plantillas ni webhooks en el MVP actual |
+
+Estos elementos solo regresan al plan activo mediante una nueva decision explicita del propietario. El codigo actual no debe depender de ellos, y su ausencia no puede marcar el MVP como incompleto.
+
+### Alcance funcional comprometido
+
+| Flujo | Definicion de terminado para este MVP | Estado |
+|---|---|---|
+| Seguridad y operacion | RBAC, aislamiento entre clinicas, auditoria, MFA donde corresponda, backups cifrados y restauracion demostrada | Parcial: controles de aplicacion/BD y auditoria encadenada probados; faltan visor de auditoria en dashboard global y backup/restauracion |
+| Pacientes, profesionales y agenda | Paciente y responsable clinico correctamente vinculados; agenda sin cruces; confirmacion, cancelacion y reprogramacion manuales trazables | Parcial: operacion base lista; alta/edicion/vinculacion de perfiles profesionales corregidas |
+| HCU dermatologica | Antecedentes dermatologicos, examen por region, Fitzpatrick, CIE-10, evolucion, mapa 2D de lesiones, ordenes/resultados de laboratorio-imagen-patologia, interconsultas, plan y proxima revision | Parcial: HCU/SOAP base lista; faltan estructuras dermatologicas avanzadas |
+| Fotografias clinicas | Archivos privados, comparacion basal/control, metadatos estandarizados, hash, auditoria y relacion directa con lesion, sesion, procedimiento y consentimiento de imagen | Parcial |
+| Consentimientos | Plantilla versionada, aprobacion administrativa, firma, PDF, hash, revocacion/adenda y separacion entre consentimiento clinico y uso de imagen | Nucleo listo; falta enlace granular foto/alcance de imagen |
+| Recetas | Documento independiente para el paciente, profesional/registro, diagnostico, formula, dosis, frecuencia, duracion, instrucciones, advertencias y alergias visibles | Nucleo listo; faltan alertas farmacologicas criticas |
+| Planes y protocolos | Objetivo, protocolo/checklist, sesiones, intervalo, productos/insumos, evolucion y cierre del tratamiento | Pendiente como entidad/flujo estructurado |
+| Paquetes, sesiones y abonos | Ledger de sesiones y dinero, vencimiento, consumo, congelacion, transferencia, devolucion y rentabilidad basica | Parcial: saldo, abonos y consumo listos |
+| Inventario | Kardex inmutable, lote/caducidad/costo, stock minimo, entradas/ajustes, consumo automatico por servicio/protocolo y responsable | Parcial: CRUD/stock base listo |
+| WhatsApp Business | Integracion oficial, recordatorios y respuestas automaticas | Fuera del MVP actual; conservar solo como futura integracion |
+| Payphone | Link por cita/paquete, deposito o abono, webhook idempotente, conciliacion, anulacion y prueba con transaccion real; el link puede copiarse y enviarse manualmente por cualquier canal | Parcial: integracion tecnica lista; validacion real pendiente |
+| CRM interno | Prospectos, pipeline, seguimiento y conversion comercial | Fuera del MVP actual; conservar solo como futura implementacion |
+| Comisiones | Reglas por profesional/esteticista, servicio, producto y venta; calculo y estado de liquidacion auditables | Pendiente |
+| Membresias y recompra | Creditos/beneficios, vigencia, consumo y recordatorios de recompra o paciente sin proxima cita | Pendiente |
+| Teledermatologia y portal seguro | Flujo asincronico controlado con formulario, fotos privadas, pago, respuesta profesional, receta y enlaces seguros para paciente | Pendiente; desarrollar despues del nucleo presencial |
+| Multi-sede y recursos | Sucursal, cabina/equipo, stock y agenda por sede sin romper el aislamiento por clinica | Pendiente; desarrollar despues de estabilizar una sede |
+| Reportes | Indicadores clinicos/operativos, agenda, no-show, inventario, paquetes, cobros y comisiones segun permisos | Parcial |
+
+### Referencia futura: para que serviria WhatsApp Business
+
+> **Fuera del alcance actual.** Esta seccion conserva la arquitectura analizada para evitar repetir la investigacion si la integracion se retoma en el futuro. Ninguno de sus componentes es requisito, tarea activa ni criterio de cierre del MVP actual.
+
+La integracion no tiene como objetivo reemplazar la historia clinica ni guardar conversaciones medicas completas en WhatsApp. Sirve para **cerrar el flujo operativo entre paciente y clinica** usando un canal que el paciente ya atiende:
+
+1. **Reducir inasistencias:** enviar recordatorios configurables, por ejemplo 48 h, 24 h y 2 h antes de la cita.
+2. **Confirmar la agenda:** ofrecer acciones de confirmar, solicitar reprogramacion o cancelar. La respuesta debe actualizar la cita o crear una tarea para recepcion.
+3. **Evitar trabajo manual:** recepcion no debe copiar telefonos, redactar el mismo texto ni marcar como enviado algo que el proveedor nunca entrego.
+4. **Cobrar reservas y tratamientos:** incluir un link Payphone de deposito, cita, paquete o saldo pendiente y relacionar el mensaje con el cobro correcto.
+5. **Dar seguimiento:** enviar instrucciones administrativas post-tratamiento, encuesta, recordatorio de siguiente sesion o recuperacion de pacientes sin proxima cita. No se enviaran diagnosticos, fotografias ni datos sensibles innecesarios.
+6. **Tener evidencia operativa:** registrar plantilla/version, fecha, destino, cita/cobro relacionado, proveedor, estado `queued/sent/delivered/read/failed`, respuesta y usuario o automatizacion responsable.
+7. **Respetar privacidad:** guardar aceptacion/retiro de comunicaciones, permitir `opt-out`, aplicar permisos y `clinicId`, limitar contenido sensible y auditar accesos/eventos.
+
+El boton actual de cobros **no constituye una integracion real**: hoy registra `sentVia = whatsapp` y muestra una confirmacion visual, pero no llama a WhatsApp, no conoce entrega/lectura y no procesa respuestas. No debe mostrarse como “enviado” hasta que exista confirmacion del proveedor; mientras tanto debe abrir un enlace manual claramente rotulado o indicarse como “marcado para envio manual”.
+
+#### Flujo tecnico/funcional esperado de WhatsApp
+
+1. El administrador configura por clinica el numero/remitente y credenciales del BSP o WhatsApp Business Platform; los secretos se cifran y nunca se devuelven al dashboard.
+2. Se normaliza el telefono en formato E.164 y se comprueba el consentimiento de comunicaciones del paciente.
+3. El administrador aprueba/configura plantillas y variables permitidas; el sistema conserva nombre, idioma, version y estado de aprobacion del proveedor.
+4. Una cita, cobro o seguimiento crea un mensaje en una **outbox persistente e idempotente**. Un worker lo envia sin bloquear la API ni duplicarlo.
+5. El proveedor llama a un webhook autenticado para `sent/delivered/read/failed` y para respuestas/botones del paciente.
+6. `confirmar` cambia la cita a confirmada; `cancelar` aplica la politica definida; `reprogramar` crea una solicitud/tarea y no mueve silenciosamente la cita.
+7. Fallos transitorios se reintentan con limite; fallos definitivos quedan visibles para recepcion. Cada transicion se audita y mantiene aislamiento por clinica.
+8. Los mensajes de pago incluyen el link Payphone ya asociado al paciente/cita/paquete. El estado pagado solo se confirma por conciliacion segura/webhook de Payphone, nunca por una respuesta de WhatsApp.
+
+#### Criterios de aceptacion de WhatsApp
+
+- Prueba real con numero de sandbox o clinica: envio, entrega, lectura, fallo y respuesta.
+- Dos clinicas no pueden consultar plantillas, credenciales, mensajes ni webhooks procesados de la otra.
+- Un evento repetido del proveedor no duplica mensajes ni cambia dos veces una cita.
+- Se respetan zona horaria, horario permitido, consentimiento y baja de comunicaciones.
+- Recepcion puede ver pendientes/fallidos y reenviar de forma controlada.
+- Las pruebas cubren recordatorio de cita, reprogramacion/cancelacion, mensaje post-tratamiento y link Payphone.
+- La UI y los reportes distinguen `programado`, `enviado`, `entregado`, `leido` y `fallido`; nunca confunden “solicitud creada” con “mensaje entregado”.
+
+### Orden oficial de implementacion y validacion
+
+Cada bloque se desarrolla en una rama/commit revisable, se prueba localmente, se publica y se valida en VPS antes de iniciar el siguiente bloque de alto riesgo.
+
+1. **Cerrar la continuacion actual:** desplegar el commit `21c3f88`, aplicar las migraciones nuevas, probar alta/edicion de profesionales, receta A4 y consentimiento manual/importado.
+2. **Seguridad operativa del piloto:** backup cifrado automatico, retencion, monitoreo y restauracion completa en un entorno aislado. Este es el primer bloqueante antes de cargar datos clinicos reales.
+3. **HCU dermatologica y lesiones:** definir el modelo versionado, formularios por region, mapa 2D, adjuntos/resultados, interconsulta y alertas de receta; migrar sin perder registros SOAP existentes.
+4. **Fotografia, consentimiento y tratamiento:** metadatos estandarizados, hash, enlace foto-lesion-procedimiento-consentimiento, revocacion visible, planes/protocolos y comparador reproducible.
+5. **Inventario y paquetes completos:** kardex, costo, consumo por protocolo, concurrencia, congelacion/transferencia/devolucion de paquetes y rentabilidad.
+6. **Payphone real:** validar links para cita/paquete, depositos, anulacion, webhook y conciliacion con credenciales/transacciones reales; el envio del link sera manual y no dependera de WhatsApp.
+7. **Operacion avanzada del MVP:** comisiones, membresias/recompra, reportes, teledermatologia/portal seguro y multi-sede/recursos, en ese orden salvo que una clinica piloto cambie la prioridad.
+8. **Cierre del MVP:** regresion completa, aislamiento con dos clinicas, pruebas de concurrencia, revision de permisos, restauracion, pruebas externas, recorrido manual por rol y despliegue reproducible.
+
+#### Puerta de calidad obligatoria por bloque
+
+- Prisma/schema: validacion, migracion desde base vacia, migracion sobre datos sinteticos compatibles y ausencia de deriva.
+- API/dashboard: typecheck, lint, unitarias, integracion HTTP/BD y builds de produccion.
+- Seguridad: pruebas positivas/negativas por rol, IDOR y aislamiento con al menos dos clinicas.
+- Datos: concurrencia e idempotencia donde existan pagos, stock, sesiones, webhooks o jobs.
+- UI: recorrido manual de administrador, recepcion y profesional; estados vacios, errores y reintentos.
+- VPS: `scripts/verify-vps.sh`, health, headers, CORS, servicio, commit activo y migraciones.
+- Documentacion: actualizar esta seccion con estado, decisiones, archivos, migraciones, pruebas, commit, despliegue y siguiente punto exacto.
+
+### Mapa de documentos para proximas sesiones
+
+Leerlos en este orden y no asumir que un documento historico describe el runtime actual:
+
+1. `ProyectosMD/ESTADO_PROYECTO.md`: fuente vigente de alcance, estado real, decisiones, pruebas, despliegue y proximo bloque.
+2. `.claude/docs_historicos/investigacion-necesidades-dermatologia-ecuador.md`: razones clinicas/comerciales, campos sugeridos y roadmap original. Consultar especialmente secciones 3, 4, 5.2-5.4, 7 y 8; SRI, sitio publico, CRM y WhatsApp Business quedaron sobreescritos por la decision de alcance actual.
+3. `ProyectosMD/CONSENTIMIENTOS.md`: reglas del flujo de plantillas, aprobacion, firma, PDF, revocacion/adenda y modelo persistente. Toda modificacion de consentimientos debe conservar esas invariantes.
+4. `ProyectosMD/AUDITORIA_CODIGO_SEGURIDAD_2026-07-18.md`: hallazgos originales, criterios de piloto y plan de pruebas. Es una fotografia historica; comprobar en este documento cuales hallazgos ya fueron corregidos.
+5. `ProyectosMD/AUDITORIA_MULTITENANT.md`: checklist y brechas originales de aislamiento. Contrastarlo con migraciones y suite HTTP/BD actuales antes de reabrir un hallazgo.
+6. `ProyectosMD/logs.md`: evidencia/diagnostico local de sesiones anteriores, no fuente normativa ni estado definitivo. Al 2026-07-23 no esta versionado; no depender de el sin confirmar que existe y que el hallazgo reproduce.
+7. `.claude/docs_historicos/PROYECTO_SITIO_DERMATOLOGIA.md`: antecedente de diseño excluido del MVP actual; no iniciar trabajo del sitio basandose en ese archivo.
+
+Al comenzar una sesion: leer primero esta cabecera y el ultimo bloque cronologico, ejecutar `git status --short`, confirmar `HEAD`/`origin/main`, revisar migraciones y pruebas disponibles, y solo despues seleccionar el primer bloque pendiente. Al terminar: documentar que cambio, que se probo, que no se probo, SHA publicado/desplegado y el siguiente paso ejecutable.
+
+---
+
+## Continuacion de desarrollo (2026-07-23) - profesionales, recetas y visibilidad de auditoria
+
+### Flujo unificado de usuario y perfil profesional
+
+- Crear un usuario con rol `profesional` o `esteticista` desde **Sistema -> Usuarios** ahora puede crear y vincular el perfil clinico en la misma transaccion. Ya no es necesario completar primero dos flujos independientes para que el profesional aparezca en Agenda, Evoluciones, Recetas o Procedimientos.
+- El identificador profesional dejo de ser obligatorio para crear el usuario o el perfil. La ausencia del dato no bloquea agenda, evolucion ni operacion interna.
+- El identificador ahora tiene tipo explicito: `Registro ACESS/MSP`, `Cedula`, `Certificacion` u `Otro`.
+- Emitir o cambiar el profesional de una receta exige especificamente un identificador de tipo `Registro ACESS/MSP` con numero no vacio. Cedula, certificacion u otro identificador no sustituyen este requisito de prescripcion.
+- **Editar usuario** permite modificar nombre, correo, contrasena, rol, estado, MFA, vinculacion profesional y, para roles clinicos, nombre documental, especialidad/funcion, tipo y numero de identificador y color de agenda.
+- La edicion del perfil se ejecuta junto con la del usuario y se registra como accion administrativa auditada.
+
+### Claridad de los formularios de receta
+
+- Los selectores de profesionales en Recetas, Evoluciones y Procedimientos distinguen carga, error de API y catalogo vacio; permiten reintentar y explican cuando solo existe un usuario sin perfil clinico.
+- **Nueva receta** bloquea el guardado cuando el profesional seleccionado no tiene Registro ACESS/MSP.
+- Los campos de receta incorporan ayudas `!` con descripcion contextual.
+- Se reemplazaron etiquetas ambiguas por textos operativos: profesional que emite, diagnostico o motivo de atencion, advertencias para el paciente, medicamento o principio activo, concentracion, forma farmaceutica o base, cantidad a entregar, dosis por toma/aplicacion, frecuencia, tiempo de tratamiento e instrucciones de uso.
+
+### Auditoria: persistencia real y visibilidad actual
+
+- Las acciones auditadas se guardan en `audit_logs` con `clinicId`, usuario cuando corresponde, accion, categoria, etiqueta, fecha/hora, IP, secuencia y hashes encadenados.
+- Se registran eventos relevantes confirmados por el servidor; no se registra cada tecla ni cada cambio antes de guardar. Tampoco toda lectura generica genera un evento, aunque las consultas/impresiones clinicas sensibles implementadas si pueden auditarse por separado.
+- El endpoint tenant-scoped `GET /admin/audit-logs` existe y restringe la consulta a la clinica autenticada.
+- **Brecha vigente:** `AdminView` ya no renderiza el visor de auditoria, aunque el cliente API todavia contiene `listAuditLogs`.
+- **Brecha vigente:** el dashboard global `/platform` no tiene pantalla ni endpoint agregado para consultar las acciones de todas las clinicas. Las acciones del superadmin se escriben en la auditoria de la clinica afectada con `userId = null`, pero no se pueden recorrer actualmente desde la UI global.
+- Por tanto, no debe afirmarse que el administrador global puede ver cada accion desde su dashboard. Los registros existen en base de datos para los flujos auditados, pero falta construir el visor con permisos, filtros, paginacion y aislamiento adecuados.
+
+### Commits, migraciones y validacion
+
+- `8a476d4`: estados visibles y reintento al cargar profesionales en formularios clinicos.
+- `54986fd`: creacion transaccional del perfil al registrar un usuario profesional.
+- `9292517`: etiqueta flexible de identificador profesional.
+- `7f2ee16`: identificador opcional al crear perfiles y requisito al emitir recetas.
+- `21c3f88`: tipos de identificador, edicion completa del perfil y ayudas de receta.
+- Migraciones nuevas:
+  - `20260724000000_optional_professional_identifier`
+  - `20260724010000_professional_identifier_type`
+- Typecheck API/dashboard: OK.
+- Lint dashboard: OK.
+- Pruebas unitarias API: 20/20 OK.
+- Builds de produccion API/dashboard: OK; dashboard con 970 modulos, 469.08 kB minificado / 131.73 kB gzip.
+- Prisma Client se regenero para validar tipos. Las migraciones deben aplicarse en VPS con `prisma migrate deploy`.
+- Publicacion Git confirmada hasta `21c3f88`; despliegue y recorrido manual de este ultimo commit en VPS aun deben confirmarse.
+
+### Punto exacto de reanudacion actualizado
+
+1. En VPS, obtener `21c3f88`, ejecutar `prisma generate`, `prisma migrate deploy`, build de API/dashboard y reiniciar `derma-api`.
+2. Ejecutar `scripts/verify-vps.sh` y confirmar health, CORS, headers, servicio, commit y migraciones.
+3. Crear un profesional sin identificador y comprobar que aparece en Agenda/Evoluciones/Procedimientos.
+4. Confirmar que una receta queda bloqueada hasta configurar `Registro ACESS/MSP`, y luego crear, editar, imprimir y guardar PDF.
+5. Probar que **Editar usuario** conserva y actualiza todos los datos del perfil clinico.
+6. Decidir e implementar el visor de auditoria tenant y/o global; hoy los eventos no son visibles en `/platform`.
+7. Continuar con backup cifrado y restauracion completa antes de cargar datos clinicos reales.
 
 ---
 
@@ -48,15 +226,16 @@ La comparacion con `.claude/docs_historicos/investigacion-necesidades-dermatolog
 | Receta para el paciente | Documento independiente imprimible con datos clinicos y profesionales necesarios | Cumple el alcance basico; no sustituye una integracion de prescripcion electronica ni valida interacciones medicamentosas |
 | Paquetes, sesiones y abonos | Saldos, pagos parciales, vigencia, consumo por cita, vendedor y ejecutor | Cumple el nucleo; faltan congelacion, transferencia, devolucion y rentabilidad por tratamiento |
 | Inventario | Productos/insumos/medicamentos, lote, caducidad, minimo y ajustes auditados | Parcial: falta kardex de movimientos, costo promedio, consumo automatico por servicio y transferencias entre sedes |
-| WhatsApp | Enlaces/acciones manuales y registro de canal en ciertos cobros | No cumple la integracion propuesta: faltan BSP/API oficial, plantillas aprobadas, recordatorios automaticos, estados de entrega y respuestas |
-| Facturacion electronica SRI | Flujo y estados simulados | No cumple para emision fiscal real: falta conectar y certificar un proveedor autorizado |
+| WhatsApp | Enlaces/acciones manuales y registro de canal en ciertos cobros | Fuera del alcance actual por decision del propietario; la integracion oficial queda como futura implementacion |
+| Facturacion electronica SRI | Flujo y estados simulados | Fuera del alcance por decision del propietario; la integracion real queda como futura implementacion y no bloquea este MVP |
 | Payphone | Creacion de links y webhook idempotente implementados | Implementado, pendiente validacion final con credenciales y transacciones reales antes del piloto |
 | Roles, aislamiento y auditoria | RBAC, permisos por modulo, auditoria encadenada, MFA de plataforma y barreras multi-tenant probadas | Cumple el nucleo tecnico |
-| CRM de prospectos y sitio publico | No existe un modulo integrado de leads/CRM ni captacion desde el sitio | No cumple si se aplica literalmente el resumen ejecutivo; la propia investigacion lo ubica tambien en una fase 2, por lo que debe fijarse el alcance comercial |
+| CRM interno de prospectos | No existe un modulo integrado de leads/CRM | Fuera del alcance actual por decision del propietario; queda como futura implementacion |
+| Sitio publico | Existe documentacion historica, no una aplicacion publica integrada en el monorepo actual | Fuera del alcance por decision del propietario; no bloquea este MVP |
 | Respaldo y recuperacion | Procedimiento definitivo y restauracion real aun diferidos | Bloqueante operativo antes de usar datos clinicos reales |
-| Multi-sede, teledermatologia, membresias y comisiones | No implementados | Fuera de la fase 1 segun la hoja de ruta, no bloquean un piloto de una sola sede |
+| Multi-sede, teledermatologia, membresias y comisiones | No implementados | Incluidos en el MVP completo como bloques avanzados; no bloquean las primeras pruebas controladas de una sede |
 
-**Veredicto:** Derma-OS ya cubre la operacion clinica esencial de pacientes, agenda, historia basica, fotos privadas, consentimientos, recetas, procedimientos, paquetes, pagos e inventario basico. Para afirmar que cumple todo el primer MVP de la investigacion deben cerrarse como minimo respaldos/restauracion, WhatsApp real, facturacion SRI real y los faltantes estructurales de inventario. La profundidad dermatologica de la HCU y la trazabilidad foto-consentimiento son las siguientes prioridades clinicas.
+**Veredicto:** Derma-OS ya cubre la operacion clinica esencial de pacientes, agenda, historia basica, fotos privadas, consentimientos, recetas, procedimientos, paquetes, pagos e inventario basico. Para afirmar que cumple el alcance oficial de este primer MVP deben completarse los bloques pendientes definidos en la cabecera, empezando por respaldos/restauracion, profundidad dermatologica de la HCU, trazabilidad foto-consentimiento, inventario y validacion Payphone. SRI real, sitio publico, CRM y WhatsApp Business no forman parte del criterio de cierre.
 
 ### Punto exacto de reanudacion
 
@@ -64,7 +243,7 @@ La comparacion con `.claude/docs_historicos/investigacion-necesidades-dermatolog
 2. En **Sistema → Profesionales clinicos**, crear y vincular los perfiles de los usuarios ya existentes usando su especialidad y registro real.
 3. Probar visualmente en VPS la receta A4, la creacion/vinculacion del profesional y el flujo de consentimiento importado/manual.
 4. Definir y probar el respaldo cifrado y una restauracion completa antes de cargar datos clinicos reales.
-5. Integrar WhatsApp mediante un BSP oficial y facturacion electronica mediante un proveedor SRI; validar Payphone con credenciales/transacciones reales si formara parte del piloto.
+5. Validar Payphone con credenciales/transacciones reales si formara parte del piloto; copiar y enviar el link manualmente por el canal elegido por la clinica.
 6. Priorizar despues el kardex/consumo automatico de inventario, la HCU dermatologica estructurada y el enlace foto-consentimiento.
 
 ---
